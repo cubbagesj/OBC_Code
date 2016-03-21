@@ -1,6 +1,6 @@
 ;	Static Name Aliases
 ;
-	TITLE   c:\dmmtest\pc.c
+	TITLE   c:\cba\pc.c
 	.286p
 INCLUDELIB      LLIBCE
 INCLUDELIB	OLDNAMES.LIB
@@ -14,6 +14,7 @@ _BSS	SEGMENT  WORD PUBLIC 'BSS'
 _BSS	ENDS
 DGROUP	GROUP	CONST, _BSS, _DATA
 	ASSUME DS: DGROUP, SS: DGROUP
+EXTRN	__AHINCR:FAR
 PC_TEXT      SEGMENT
 	ASSUME	CS: PC_TEXT
 	PUBLIC	_PC_DispChar
@@ -98,54 +99,43 @@ _PC_DispChar	PROC FAR
 ;|*** void PC_DispChar (INT8U x, INT8U y, INT8U c, INT8U color)
 ;|*** {
 ; Line 79
-	*** 000000	c8 06 00 00 		enter	6,0
-	*** 000004	57 			push	di
-	*** 000005	56 			push	si
+	*** 000000	55 			push	bp
+	*** 000001	8b ec 			mov	bp,sp
+;	x = 6
+;	y = 8
+;	c = 10
+;	color = 12
 ;	pscr = -4
 ;	offset = -6
-;	color = 12
-;	c = 10
-;	y = 8
-;	x = 6
 ;|***     INT8U  far *pscr;
 ;|***     INT16U      offset;
 ;|*** 
 ;|*** 
 ;|***     offset  = (INT16U)y * DISP_MAX_X * 2 + (INT16U)x * 2;  /* Calculate position on the screen         */
-; Line 84
-	*** 000006	b0 50 			mov	al,80	;0050H
-	*** 000008	f6 66 08 		mul	BYTE PTR [bp+8]	;y
-	*** 00000b	8a 4e 06 		mov	cl,BYTE PTR [bp+6]	;x
-	*** 00000e	2a ed 			sub	ch,ch
-	*** 000010	03 c1 			add	ax,cx
-	*** 000012	d1 e0 			shl	ax,1
-	*** 000014	89 46 fa 		mov	WORD PTR [bp-6],ax	;offset
 ;|***     pscr    = (INT8U far *)MK_FP(DISP_BASE, offset);
-; Line 85
-	*** 000017	8b 46 fa 		mov	ax,WORD PTR [bp-6]	;offset
-	*** 00001a	2b d2 			sub	dx,dx
-	*** 00001c	2d 00 00 		sub	ax,0
-	*** 00001f	81 da 00 48 		sbb	dx,18432	;4800H
-	*** 000023	89 46 fc 		mov	WORD PTR [bp-4],ax	;pscr
-	*** 000026	89 56 fe 		mov	WORD PTR [bp-2],dx
 ;|***     *pscr++ = c;                                           /* Put character in video RAM               */
 ; Line 86
-	*** 000029	8a 46 0a 		mov	al,BYTE PTR [bp+10]	;c
-	*** 00002c	c4 5e fc 		les	bx,DWORD PTR [bp-4]	;pscr
-	*** 00002f	ff 46 fc 		inc	WORD PTR [bp-4]	;pscr
-	*** 000032	26 88 07 		mov	BYTE PTR es:[bx],al
+	*** 000003	8a 46 0a 		mov	al,BYTE PTR [bp+10]	;c
+	*** 000006	8a 4e 08 		mov	cl,BYTE PTR [bp+8]	;y
+	*** 000009	2a ed 			sub	ch,ch
+	*** 00000b	6b d9 50 		imul	bx,cx,80	;0050H
+	*** 00000e	8a 4e 06 		mov	cl,BYTE PTR [bp+6]	;x
+	*** 000011	03 d9 			add	bx,cx
+	*** 000013	03 db 			add	bx,bx
+	*** 000015	2b c9 			sub	cx,cx
+	*** 000017	2b d9 			sub	bx,cx
+	*** 000019	81 d9 00 48 		sbb	cx,18432	;4800H
+	*** 00001d	8e c1 			mov	es,cx
+	*** 00001f	26 88 07 		mov	BYTE PTR es:[bx],al
 ;|***     *pscr   = color;                                       /* Put video attribute in video RAM         */
 ; Line 87
-	*** 000035	8a 46 0c 		mov	al,BYTE PTR [bp+12]	;color
-	*** 000038	c4 5e fc 		les	bx,DWORD PTR [bp-4]	;pscr
-	*** 00003b	26 88 07 		mov	BYTE PTR es:[bx],al
+	*** 000022	8a 46 0c 		mov	al,BYTE PTR [bp+12]	;color
+	*** 000025	26 88 47 01 		mov	BYTE PTR es:[bx+1],al
 ;|*** }
 ; Line 88
-					$EX212:
-	*** 00003e	5e 			pop	si
-	*** 00003f	5f 			pop	di
-	*** 000040	c9 			leave	
-	*** 000041	cb 			ret	
+	*** 000029	c9 			leave	
+	*** 00002a	cb 			ret	
+	*** 00002b	90 			nop	
 
 _PC_DispChar	ENDP
 	PUBLIC	_PC_DispClrCol
@@ -173,63 +163,57 @@ _PC_DispClrCol	PROC FAR
 ;|*** void  __far __cdecl PC_DispClrCol (INT8U x, INT8U color)
 ;|*** {
 ; Line 110
-	*** 000042	c8 06 00 00 		enter	6,0
-	*** 000046	57 			push	di
-	*** 000047	56 			push	si
-;	pscr = -4
-;	i = -6
-;	color = 8
+	*** 00002c	55 			push	bp
+	*** 00002d	8b ec 			mov	bp,sp
+	*** 00002f	57 			push	di
+	*** 000030	56 			push	si
 ;	x = 6
+;	color = 8
+;	register si = pscr
+;	i = -6
 ;|***     INT8U far *pscr;
 ;|***     INT8U      i;
 ;|*** 
 ;|*** 
 ;|***     pscr = (INT8U far *)MK_FP(DISP_BASE, (INT16U)x * 2);
 ; Line 115
-	*** 000048	8a 46 06 		mov	al,BYTE PTR [bp+6]	;x
-	*** 00004b	2a e4 			sub	ah,ah
-	*** 00004d	2b d2 			sub	dx,dx
-	*** 00004f	2d 00 00 		sub	ax,0
-	*** 000052	81 da 00 24 		sbb	dx,9216	;2400H
-	*** 000056	d1 e0 			shl	ax,1
-	*** 000058	d1 d2 			rcl	dx,1
-	*** 00005a	89 46 fc 		mov	WORD PTR [bp-4],ax	;pscr
-	*** 00005d	89 56 fe 		mov	WORD PTR [bp-2],dx
+	*** 000031	8a 46 06 		mov	al,BYTE PTR [bp+6]	;x
+	*** 000034	2a e4 			sub	ah,ah
+	*** 000036	2b d2 			sub	dx,dx
+	*** 000038	2b c2 			sub	ax,dx
+	*** 00003a	81 da 00 24 		sbb	dx,9216	;2400H
+	*** 00003e	03 c0 			add	ax,ax
+	*** 000040	13 d2 			adc	dx,dx
+	*** 000042	8b f0 			mov	si,ax
+	*** 000044	8e da 			mov	ds,dx
+	ASSUME DS: NOTHING
+	*** 000046	bf 19 00 		mov	di,25	;0019H
 ;|***     for (i = 0; i < DISP_MAX_Y; i++) {
 ; Line 116
-	*** 000060	c6 46 fa 00 		mov	BYTE PTR [bp-6],0	;i
-	*** 000064	e9 03 00 		jmp	$F222
-					$FC223:
-	*** 000067	fe 46 fa 		inc	BYTE PTR [bp-6]	;i
-					$F222:
-	*** 00006a	80 7e fa 19 		cmp	BYTE PTR [bp-6],25	;0019H	;i
-	*** 00006e	72 03 			jb	$JCC110
-	*** 000070	e9 1b 00 		jmp	$FB224
-					$JCC110:
+					$F290:
 ;|***         *pscr++ = ' ';                           /* Put ' ' character in video RAM                     */
 ; Line 117
-	*** 000073	c4 5e fc 		les	bx,DWORD PTR [bp-4]	;pscr
-	*** 000076	ff 46 fc 		inc	WORD PTR [bp-4]	;pscr
-	*** 000079	26 c6 07 20 		mov	BYTE PTR es:[bx],32	;0020H
+	*** 000049	c6 04 20 		mov	BYTE PTR [si],32	;0020H
+	*** 00004c	46 			inc	si
 ;|***         *pscr   = color;                         /* Put video attribute in video RAM                   */
 ; Line 118
-	*** 00007d	8a 46 08 		mov	al,BYTE PTR [bp+8]	;color
-	*** 000080	c4 5e fc 		les	bx,DWORD PTR [bp-4]	;pscr
-	*** 000083	26 88 07 		mov	BYTE PTR es:[bx],al
+	*** 00004d	8a 46 08 		mov	al,BYTE PTR [bp+8]	;color
+	*** 000050	88 04 			mov	BYTE PTR [si],al
+	*** 000052	81 c6 a0 00 		add	si,160	;00a0H
+	*** 000056	4f 			dec	di
+	*** 000057	75 f0 			jne	$F290
 ;|***         pscr    = pscr + DISP_MAX_X * 2;         /* Position on next row                               */
-; Line 119
-	*** 000086	81 46 fc a0 00 		add	WORD PTR [bp-4],160	;00a0H	;pscr
 ;|***     }
-; Line 120
-	*** 00008b	e9 d9 ff 		jmp	$FC223
-					$FB224:
 ;|*** }
 ; Line 121
-					$EX219:
-	*** 00008e	5e 			pop	si
-	*** 00008f	5f 			pop	di
-	*** 000090	c9 			leave	
-	*** 000091	cb 			ret	
+	*** 000059	16 			push	ss
+	*** 00005a	1f 			pop	ds
+	ASSUME DS: DGROUP
+	*** 00005b	5e 			pop	si
+	*** 00005c	5f 			pop	di
+	*** 00005d	c9 			leave	
+	*** 00005e	cb 			ret	
+	*** 00005f	90 			nop	
 
 _PC_DispClrCol	ENDP
 	PUBLIC	_PC_DispClrRow
@@ -257,60 +241,50 @@ _PC_DispClrRow	PROC FAR
 ;|*** void  __far __cdecl PC_DispClrRow (INT8U y, INT8U color)
 ;|*** {
 ; Line 143
-	*** 000092	c8 06 00 00 		enter	6,0
-	*** 000096	57 			push	di
-	*** 000097	56 			push	si
-;	pscr = -4
-;	i = -6
-;	color = 8
+	*** 000060	55 			push	bp
+	*** 000061	8b ec 			mov	bp,sp
+	*** 000063	57 			push	di
+	*** 000064	56 			push	si
 ;	y = 6
+;	color = 8
+;	register si = pscr
+;	i = -6
 ;|***     INT8U far *pscr;
 ;|***     INT8U      i;
 ;|*** 
 ;|*** 
 ;|***     pscr = (INT8U far *)MK_FP(DISP_BASE, (INT16U)y * DISP_MAX_X * 2);
 ; Line 148
-	*** 000098	8a 46 06 		mov	al,BYTE PTR [bp+6]	;y
-	*** 00009b	2a e4 			sub	ah,ah
-	*** 00009d	b9 a0 00 		mov	cx,160	;00a0H
-	*** 0000a0	f7 e1 			mul	cx
-	*** 0000a2	2d 00 00 		sub	ax,0
-	*** 0000a5	81 da 00 48 		sbb	dx,18432	;4800H
-	*** 0000a9	89 46 fc 		mov	WORD PTR [bp-4],ax	;pscr
-	*** 0000ac	89 56 fe 		mov	WORD PTR [bp-2],dx
+	*** 000065	8a 46 06 		mov	al,BYTE PTR [bp+6]	;y
+	*** 000068	2a e4 			sub	ah,ah
+	*** 00006a	b9 a0 00 		mov	cx,160	;00a0H
+	*** 00006d	f7 e1 			mul	cx
+	*** 00006f	2d 00 00 		sub	ax,0
+	*** 000072	81 da 00 48 		sbb	dx,18432	;4800H
+	*** 000076	8b f0 			mov	si,ax
+	*** 000078	8e c2 			mov	es,dx
+	*** 00007a	bf 50 00 		mov	di,80	;0050H
 ;|***     for (i = 0; i < DISP_MAX_X; i++) {
 ; Line 149
-	*** 0000af	c6 46 fa 00 		mov	BYTE PTR [bp-6],0	;i
-	*** 0000b3	e9 03 00 		jmp	$F232
-					$FC233:
-	*** 0000b6	fe 46 fa 		inc	BYTE PTR [bp-6]	;i
-					$F232:
-	*** 0000b9	80 7e fa 50 		cmp	BYTE PTR [bp-6],80	;0050H	;i
-	*** 0000bd	72 03 			jb	$JCC189
-	*** 0000bf	e9 19 00 		jmp	$FB234
-					$JCC189:
+					$F300:
 ;|***         *pscr++ = ' ';                           /* Put ' ' character in video RAM                     */
 ; Line 150
-	*** 0000c2	c4 5e fc 		les	bx,DWORD PTR [bp-4]	;pscr
-	*** 0000c5	ff 46 fc 		inc	WORD PTR [bp-4]	;pscr
-	*** 0000c8	26 c6 07 20 		mov	BYTE PTR es:[bx],32	;0020H
+	*** 00007d	26 c6 04 20 		mov	BYTE PTR es:[si],32	;0020H
+	*** 000081	46 			inc	si
 ;|***         *pscr++ = color;                         /* Put video attribute in video RAM                   */
 ; Line 151
-	*** 0000cc	8a 46 08 		mov	al,BYTE PTR [bp+8]	;color
-	*** 0000cf	c4 5e fc 		les	bx,DWORD PTR [bp-4]	;pscr
-	*** 0000d2	ff 46 fc 		inc	WORD PTR [bp-4]	;pscr
-	*** 0000d5	26 88 07 		mov	BYTE PTR es:[bx],al
+	*** 000082	8a 46 08 		mov	al,BYTE PTR [bp+8]	;color
+	*** 000085	26 88 04 		mov	BYTE PTR es:[si],al
+	*** 000088	46 			inc	si
+	*** 000089	4f 			dec	di
+	*** 00008a	75 f1 			jne	$F300
 ;|***     }
-; Line 152
-	*** 0000d8	e9 db ff 		jmp	$FC233
-					$FB234:
 ;|*** }
 ; Line 153
-					$EX229:
-	*** 0000db	5e 			pop	si
-	*** 0000dc	5f 			pop	di
-	*** 0000dd	c9 			leave	
-	*** 0000de	cb 			ret	
+	*** 00008c	5e 			pop	si
+	*** 00008d	5f 			pop	di
+	*** 00008e	c9 			leave	
+	*** 00008f	cb 			ret	
 
 _PC_DispClrRow	ENDP
 	PUBLIC	_PC_DispClrScr
@@ -335,53 +309,47 @@ _PC_DispClrScr	PROC FAR
 ;|*** void  __far __cdecl PC_DispClrScr (INT8U color)
 ;|*** {
 ; Line 172
-	*** 0000df	c8 06 00 00 		enter	6,0
-	*** 0000e3	57 			push	di
-	*** 0000e4	56 			push	si
-;	pscr = -4
-;	i = -6
+	*** 000090	55 			push	bp
+	*** 000091	8b ec 			mov	bp,sp
+	*** 000093	56 			push	si
 ;	color = 6
+;	register si = pscr
+;	i = -6
 ;|***     INT8U  far *pscr;
 ;|***     INT16U      i;
 ;|*** 
 ;|*** 
 ;|***     pscr = (INT8U far *)MK_FP(DISP_BASE, 0x0000);
 ; Line 177
-	*** 0000e5	c7 46 fc 00 00 		mov	WORD PTR [bp-4],0	;pscr
-	*** 0000ea	c7 46 fe 00 b8 		mov	WORD PTR [bp-2],-18432	;b800H
+	*** 000094	33 c0 			xor	ax,ax
+	*** 000096	ba 00 b8 		mov	dx,-18432	;b800H
+	*** 000099	8b f0 			mov	si,ax
+	*** 00009b	8e da 			mov	ds,dx
+	ASSUME DS: NOTHING
+	*** 00009d	b9 d0 07 		mov	cx,2000	;07d0H
 ;|***     for (i = 0; i < (DISP_MAX_X * DISP_MAX_Y); i++) { /* PC display has 80 columns and 25 lines        */
 ; Line 178
-	*** 0000ef	c7 46 fa 00 00 		mov	WORD PTR [bp-6],0	;i
-	*** 0000f4	e9 03 00 		jmp	$F240
-					$FC241:
-	*** 0000f7	ff 46 fa 		inc	WORD PTR [bp-6]	;i
-					$F240:
-	*** 0000fa	81 7e fa d0 07 		cmp	WORD PTR [bp-6],2000	;07d0H	;i
-	*** 0000ff	72 03 			jb	$JCC255
-	*** 000101	e9 19 00 		jmp	$FB242
-					$JCC255:
+					$F308:
 ;|***         *pscr++ = ' ';                                /* Put ' ' character in video RAM                */
 ; Line 179
-	*** 000104	c4 5e fc 		les	bx,DWORD PTR [bp-4]	;pscr
-	*** 000107	ff 46 fc 		inc	WORD PTR [bp-4]	;pscr
-	*** 00010a	26 c6 07 20 		mov	BYTE PTR es:[bx],32	;0020H
+	*** 0000a0	c6 04 20 		mov	BYTE PTR [si],32	;0020H
+	*** 0000a3	46 			inc	si
 ;|***         *pscr++ = color;                              /* Put video attribute in video RAM              */
 ; Line 180
-	*** 00010e	8a 46 06 		mov	al,BYTE PTR [bp+6]	;color
-	*** 000111	c4 5e fc 		les	bx,DWORD PTR [bp-4]	;pscr
-	*** 000114	ff 46 fc 		inc	WORD PTR [bp-4]	;pscr
-	*** 000117	26 88 07 		mov	BYTE PTR es:[bx],al
+	*** 0000a4	8a 46 06 		mov	al,BYTE PTR [bp+6]	;color
+	*** 0000a7	88 04 			mov	BYTE PTR [si],al
+	*** 0000a9	46 			inc	si
+	*** 0000aa	49 			dec	cx
+	*** 0000ab	75 f3 			jne	$F308
 ;|***     }
-; Line 181
-	*** 00011a	e9 da ff 		jmp	$FC241
-					$FB242:
 ;|*** }
 ; Line 182
-					$EX237:
-	*** 00011d	5e 			pop	si
-	*** 00011e	5f 			pop	di
-	*** 00011f	c9 			leave	
-	*** 000120	cb 			ret	
+	*** 0000ad	16 			push	ss
+	*** 0000ae	1f 			pop	ds
+	ASSUME DS: DGROUP
+	*** 0000af	5e 			pop	si
+	*** 0000b0	c9 			leave	
+	*** 0000b1	cb 			ret	
 
 _PC_DispClrScr	ENDP
 	PUBLIC	_PC_DispStr
@@ -414,69 +382,69 @@ _PC_DispStr	PROC FAR
 ;|*** void  __far __cdecl PC_DispStr (INT8U x, INT8U y, INT8U *s, INT8U color)
 ;|*** {
 ; Line 209
-	*** 000121	c8 06 00 00 		enter	6,0
-	*** 000125	57 			push	di
-	*** 000126	56 			push	si
+	*** 0000b2	c8 04 00 00 		enter	4,0
+	*** 0000b6	56 			push	si
 ;	pscr = -4
 ;	offset = -6
-;	color = 14
-;	s = 10
-;	y = 8
 ;	x = 6
+;	y = 8
+;	s = 10
+;	color = 14
 ;|***     INT8U  far *pscr;
 ;|***     INT16U      offset;
 ;|*** 
 ;|*** 
 ;|***     offset  = (INT16U)y * DISP_MAX_X * 2 + (INT16U)x * 2;   /* Calculate position of 1st character     */
-; Line 214
-	*** 000127	b0 50 			mov	al,80	;0050H
-	*** 000129	f6 66 08 		mul	BYTE PTR [bp+8]	;y
-	*** 00012c	8a 4e 06 		mov	cl,BYTE PTR [bp+6]	;x
-	*** 00012f	2a ed 			sub	ch,ch
-	*** 000131	03 c1 			add	ax,cx
-	*** 000133	d1 e0 			shl	ax,1
-	*** 000135	89 46 fa 		mov	WORD PTR [bp-6],ax	;offset
 ;|***     pscr    = (INT8U far *)MK_FP(DISP_BASE, offset);
 ; Line 215
-	*** 000138	8b 46 fa 		mov	ax,WORD PTR [bp-6]	;offset
-	*** 00013b	2b d2 			sub	dx,dx
-	*** 00013d	2d 00 00 		sub	ax,0
-	*** 000140	81 da 00 48 		sbb	dx,18432	;4800H
-	*** 000144	89 46 fc 		mov	WORD PTR [bp-4],ax	;pscr
-	*** 000147	89 56 fe 		mov	WORD PTR [bp-2],dx
+	*** 0000b7	b0 50 			mov	al,80	;0050H
+	*** 0000b9	f6 66 08 		mul	BYTE PTR [bp+8]	;y
+	*** 0000bc	8a 4e 06 		mov	cl,BYTE PTR [bp+6]	;x
+	*** 0000bf	2a ed 			sub	ch,ch
+	*** 0000c1	03 c1 			add	ax,cx
+	*** 0000c3	03 c0 			add	ax,ax
+	*** 0000c5	2b d2 			sub	dx,dx
+	*** 0000c7	2b c2 			sub	ax,dx
+	*** 0000c9	81 da 00 48 		sbb	dx,18432	;4800H
+	*** 0000cd	8b f0 			mov	si,ax
+	*** 0000cf	89 56 fe 		mov	WORD PTR [bp-2],dx
 ;|***     while (*s) {
 ; Line 216
-					$FC255:
-	*** 00014a	c4 5e 0a 		les	bx,DWORD PTR [bp+10]	;s
-	*** 00014d	26 80 3f 00 		cmp	BYTE PTR es:[bx],0
-	*** 000151	75 03 			jne	$JCC337
-	*** 000153	e9 21 00 		jmp	$FB256
-					$JCC337:
+	*** 0000d2	c4 5e 0a 		les	bx,DWORD PTR [bp+10]	;s
+	*** 0000d5	26 38 2f 		cmp	BYTE PTR es:[bx],ch
+	*** 0000d8	74 31 			je	$EX319
+					$FC323:
 ;|***         *pscr++ = *s++;                                     /* Put character in video RAM              */
 ; Line 217
-	*** 000156	c4 5e 0a 		les	bx,DWORD PTR [bp+10]	;s
-	*** 000159	ff 46 0a 		inc	WORD PTR [bp+10]	;s
-	*** 00015c	26 8a 07 		mov	al,BYTE PTR es:[bx]
-	*** 00015f	c4 5e fc 		les	bx,DWORD PTR [bp-4]	;pscr
-	*** 000162	ff 46 fc 		inc	WORD PTR [bp-4]	;pscr
-	*** 000165	26 88 07 		mov	BYTE PTR es:[bx],al
+	*** 0000da	26 8a 07 		mov	al,BYTE PTR es:[bx]
+	*** 0000dd	8e c2 			mov	es,dx
+	*** 0000df	26 88 04 		mov	BYTE PTR es:[si],al
 ;|***         *pscr++ = color;                                    /* Put video attribute in video RAM        */
 ; Line 218
-	*** 000168	8a 46 0e 		mov	al,BYTE PTR [bp+14]	;color
-	*** 00016b	c4 5e fc 		les	bx,DWORD PTR [bp-4]	;pscr
-	*** 00016e	ff 46 fc 		inc	WORD PTR [bp-4]	;pscr
-	*** 000171	26 88 07 		mov	BYTE PTR es:[bx],al
+	*** 0000e2	8a 46 0e 		mov	al,BYTE PTR [bp+14]	;color
+	*** 0000e5	46 			inc	si
+	*** 0000e6	8e 46 fe 		mov	es,WORD PTR [bp-2]
+	*** 0000e9	26 88 04 		mov	BYTE PTR es:[si],al
+	*** 0000ec	8b c6 			mov	ax,si
+	*** 0000ee	8c c2 			mov	dx,es
+	*** 0000f0	40 			inc	ax
+	*** 0000f1	8b f0 			mov	si,ax
+	*** 0000f3	8c 46 fe 		mov	WORD PTR [bp-2],es
 ;|***     }
 ; Line 219
-	*** 000174	e9 d3 ff 		jmp	$FC255
-					$FB256:
+	*** 0000f6	83 46 0a 01 		add	WORD PTR [bp+10],1	;s
+	*** 0000fa	1b c0 			sbb	ax,ax
+	*** 0000fc	25 00 00 		and	ax,OFFSET __AHINCR
+	*** 0000ff	01 46 0c 		add	WORD PTR [bp+12],ax
+	*** 000102	c4 5e 0a 		les	bx,DWORD PTR [bp+10]	;s
+	*** 000105	26 80 3f 00 		cmp	BYTE PTR es:[bx],0
+	*** 000109	75 cf 			jne	$FC323
 ;|*** }
 ; Line 220
-					$EX251:
-	*** 000177	5e 			pop	si
-	*** 000178	5f 			pop	di
-	*** 000179	c9 			leave	
-	*** 00017a	cb 			ret	
+					$EX319:
+	*** 00010b	5e 			pop	si
+	*** 00010c	c9 			leave	
+	*** 00010d	cb 			ret	
 
 _PC_DispStr	ENDP
 PC_TEXT	ENDS

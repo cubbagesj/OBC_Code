@@ -1,33 +1,16 @@
-/*  cba.cpp
-    derived from cb9.cpp 
-    
-    VER 1.0
-    12/31/2007 jtm
-    
-    new features:
-      modified pcm data stream to 120 16-bit channels @ 10Hz
-      interface with new LN-200
-    source files in project:
-      cba.cpp           main source module, this file
-      esccauto.cpp    escc104 routines for LN200 & PCM data communications
-      rs232gps.cpp    routines for com1 adcp, com2 rf ethernet, com4 gps
-      ether.cpp     interface to dos ethernet packet driver
-      uio48.cpp         routines for LBC586 I/O ports
-      pc.c              direct video ram access for fast display writes
-      
-    library file in project
-      tech80h.lib   tech80 5650B library  
-      
-    compile and link with MSVC 1.52 as a dos executable, huge memory model
-*/   
+// dmmtest.cpp
+// 2/18/2004
 
-
+/* modified 9/25/2007 jtm for TB model
+   1) implement starboard and port prop control using tech80 ch 1&2
+   2) report starbord rpm on OBS MCV channel, port rpm on MCI channel
+*/
 
 #include <bios.h>
 #include <time.h>
 #include <process.h>
 #include <stdlib.h>
-#include "cba.h"
+#include "dmmtest.h"
 #include "esccauto.h"
 #include "dmm32.h"
 #include "rs232.h"
@@ -42,19 +25,22 @@
 #include <string.h>
 extern "C"
  {
- #include "c:\cba\te5650.h"
+ #include "c:\tech80\c\te5650.h"
  }
 
-char pcm[2*PCMLEN];
-int pcm_sent = 0;          // flag indicates this frame's pcm data has been sent
-
+char pcm[96]; // old decom
+//char pcm[2*PCMLEN];  // new decom
+unsigned pcm_sent = 0;
 char s[81];
 
-char acoustic_message[60];  // char string to send to shore thru acoustic modem
-int  send_message = 0;     // flag indicates valid acoustic message is ready to send
+char acoustic_message[12];        // 8/9/06 JTM char string to send to shore thru acoustic modem
+int  send_message = 0;          // flag indicates valid acoustic message is ready to send
 
 //unsigned char obc_mac[6]    =  {0x00, 0x01, 0x45, 0x00, 0x7a, 0x73};
-unsigned char obc_mac[6]    =  {0x00, 0x01, 0x45, 0x00, 0x7a, 0x7c}; //CBA
+//unsigned char obc_mac[6]    =  {0x00, 0x01, 0x45, 0x00, 0x7a, 0xa0};
+//unsigned char obc_mac[6]    =  {0x00, 0x01, 0x45, 0x00, 0x7a, 0xbb};
+//unsigned char obc_mac[6]    =  {0x00, 0x01, 0x45, 0x00, 0x7a, 0x9a};
+unsigned char obc_mac[6]    =  {0x00, 0x01, 0x45, 0x00, 0x7a, 0xb0};
 unsigned char micron_mac[6] =  {0x08, 0x00, 0x17, 0x08, 0x87, 0x4d};
 unsigned char control_mac[6] = {0x00, 0x01, 0x45, 0x00, 0x8a, 0x21};
 unsigned char broadcast_mac[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
@@ -113,18 +99,14 @@ unsigned char ds_buffer[80];
 
 unsigned      adcp_new_data;
 unsigned long adcp_data_frame;
-unsigned char adcp_array[ADCPLEN];
-unsigned char adcp_buffer[ADCPLEN];
+unsigned char adcp_array[88];
+unsigned char adcp_buffer[88];
 unsigned char adcp_test[88];
 
 unsigned      gps_new_data;
 unsigned long gps_data_frame;
-unsigned char gps_array[80];
+unsigned      gps_array[4];
 unsigned char gps_buffer[80];
-
-
-int send_once = 1;
-int ready     = 0;
 
 struct SYS
   {
@@ -184,11 +166,13 @@ struct LN200
   } ln200;
 
   
-struct COMMANDS
+struct COMMANDS  // new 12/8/2004
   {
   unsigned int  sync_word;
   unsigned int  mode;
-  unsigned int  rpm;
+  //unsigned int  rpm;
+  // changed for TB model 9/26/2007 jtm
+  unsigned int  stbd_rpm;
   unsigned int  rudder;
   unsigned int  stern1;
   unsigned int  stern2;
@@ -197,18 +181,30 @@ struct COMMANDS
   unsigned int  ln200_mode;
   unsigned int  ln200_init_heading;
   unsigned int  ln200_init_latitude;
+/*  
   unsigned int  adcp_reset;
   unsigned int  adcp_heading;
   unsigned int  ds_send_message;
   unsigned int  ds_dmgx;
   unsigned int  ds_dmgy;
-  unsigned int  ds_dmgz;        
+  unsigned int  ds_dmgz;
   unsigned int  spare1;
+*/
+  unsigned int  ds_send_message;   // new 8/9/06 JTM
+  unsigned int  ds_dmgx1;
+  unsigned int  ds_dmgx2;
+  unsigned int  ds_dmgy1;
+  unsigned int  ds_dmgy2;
+  unsigned int  ds_dmgz1;
+  
+  // changed for TB model port prop 9/25/2007 jtm
+  //unsigned int  ds_dmgz2;
+  unsigned int  port_rpm;
   } commands;  
 
 int time_since_last_command = 0;
 
-struct ECHO
+struct ECHO            // new 12/08/2004
   {
   unsigned int  new_data;
   unsigned long frame;
@@ -232,17 +228,17 @@ struct ADCP
   long unsigned frame;
   unsigned long time_high;
   unsigned int  time_low;
-  unsigned char data[ADCPLEN];  
+  unsigned char  data[88];  
   } adcp;
-  
+
 struct GPS
   {
   unsigned int  new_data;
   long unsigned frame;
   unsigned long time_high;
   unsigned int  time_low;
-  unsigned char  data[80];  
-  } gps;  
+  unsigned char  data[80];
+  } gps;
  
 struct TIMER
   {
@@ -261,8 +257,7 @@ struct TIMER
         ds_time,
         adcp_time,
         gps_time;
-   
-   
+
 void (interrupt far * old_dmm32a_vect)();
 void (interrupt far * old_dmm32b_vect)();
 void (interrupt far * rtc_vect)();
@@ -298,7 +293,7 @@ unsigned data_ready = 0;
 extern unsigned tx2_len;
 extern unsigned tx2_counter;
 extern unsigned tx2_index;
-extern unsigned char tx2_message[128];
+
 void main(void)
   {
   configure_obc();
@@ -306,12 +301,11 @@ void main(void)
   while(1)
     {
     get_frame_time();
-    if(!(frame%10)) send_acoustic_message();
     send_data_packet();
     start_data_collection();    
     apply_commands();
     heartbeat();
-    //send_acoustic_message();
+    send_acoustic_message();
     wait_for_time_tick();
     if(_kbhit()) break;
     }
@@ -322,20 +316,17 @@ void main(void)
 
 void send_acoustic_message(void)
   {
-  //if(send_message != 0)
+  if(send_message != 0)
     {
     send_message = 0;
     //_fstrcpy(acoustic_message,"abcdef");
-    //_fstrcpy(acoustic_message,"123456");
-    _fmemcpy(&tx2_message,&pcm,120);
     if(_inp(COM2_LSR) & TXB_EMPTY)  // if com2 tx is idle
       {
-      com2_tx = 1;
-      tx2_index = 1;                // flags for the rs232 module
-      tx2_len = 120;
-      _outp(COM2_TX, tx2_message[0]);  // send out the first byte
+      for(int i=0; i<sizeof(acoustic_message); i++)  // send the message
+        {
+        _outp(COM2_TX, acoustic_message[i]);
+        }
       }
-      
     }    
   }
 
@@ -345,18 +336,97 @@ void send_pcm(void)
   {
   if(escc1.istxing[channelb]==0)
     {
-    pack_pcm();
-    //escc1.tx_port(channelb, pcm, 96);            // old decom
-    escc1.tx_port(channelb, pcm, sizeof(pcm));  // new decom
+    pack_pcm();    // old decom
+    //new_pack_pcm();  // new decom
+    escc1.tx_port(channelb, pcm, 96);            // old decom
+    //escc1.tx_port(channelb, pcm, sizeof(PCMLEN));  // new decom
     }
   }
+
+/*
+void new_pack_pcm(void)  // new decom  2008 jtm
+  {
+    
+  // The telemetry frame is 120 16-bit words
   
+  int data[120];
   
-void pack_pcm(void)  // new decom
+  data[0]  = 0xeb90;        // sync word
+  data[1]  = sys.fs_status;
+  data[2]  = sys.op_status;
+  data[3]  = obs.data[0];  // depth 1
+  data[4]  = obs.data[1];  // depth 2
+  data[5]  = obs.data[2];  // depth 3
+  data[6]  = obs.data[3];  // paddle wheel
+  data[7]  = obs.data[4];  // stern1 lvdt
+  data[8]  = obs.data[5];  // stern2 lvdt
+  data[9]  = obs.data[6];  // rudder lvdt
+  data[10] = obs.data[7];  // fore lvdt
+  data[11] = obs.data[8];  // spare lvdt
+  data[12] = obs.data[16];  // ebat volts
+  data[13] = obs.data[17];  // pbat volts
+  data[14] = obs.data[18];  // prop volts
+  data[15] = obs.data[19];  // prop amps
+  data[16] = obs.data[20];  // 5B module rpm (unsigned)
+  data[17] = obs.data[21];  // prop discriminator
+  data[18] = obs.data[22];   // stern1 discriminator
+  data[19] = obs.data[23];   // stern2 discriminator
+  data[20] = obs.data[24];   // rudder discriminator
+  data[21] = obs.data[25];   // fore discriminator
+  data[22] = obs.data[26];   // mode discriminator
+  data[23] = obs.data[27];   // ballast discriminator
+  data[24] = obs.data[28];   // failsafe discriminator
+  data[25] = obs.data[29];   // radio mode discriminator
+  data[26] = obs.data[30];   // key discriminator
+  data[27] = prop.rpm;
+  data[28] = (int)prop.position;           
+  data[29] = ln200.data[0];  // z linear accel 
+  data[30] = ln200.data[1];  // y linear accel
+  data[31] = ln200.data[2];  // x linear accel
+  data[32] = ln200.data[3];  // y angular rate
+  data[33] = ln200.data[4];  // x angular rate
+  data[34] = ln200.data[5];  // z angular rate
+  data[35] = ln200.data[6];  // y angular accel
+  data[36] = ln200.data[7];  // x angular accel
+  data[37] = ln200.data[8];  // z angular accel
+  data[38] = ln200.data[9];  // pitch
+  data[39] = ln200.data[10]; // roll 
+  data[40] = ln200.data[11]; // heading 
+  data[41] = commands.mode;
+  data[42] = commands.stbd_rpm;
+  data[43] = commands.rudder;
+  data[44] = commands.stern1;
+  data[45] = commands.stern2;
+  data[46] = commands.fore;
+  data[47] = commands.ballast;
+  data[48] = commands.ds_dmgx1;
+  data[49] = commands.ds_dmgy1;
+  data[50] = commands.ds_dmgz1;
+  data[51] = commands.port_rpm;
+  memcpy(&data[52],&adcp.data[154],2); // y_vel_btm;
+  memcpy(&data[53],&adcp.data[158],2); // z_vel_btm;
+  memcpy(&data[54],&adcp.data[156],2); // x_vel_btm;
+  memcpy(&data[55],&adcp.data[146],2); // bm1_rng_to_btm;
+  memcpy(&data[56],&adcp.data[148],2); // bm2_rng_to_btm;
+  memcpy(&data[57],&adcp.data[150],2); // bm3_rng_to_btm;
+  memcpy(&data[58],&adcp.data[152],2); // bm4_rng_to_btm;
+  
+  // put stbd rpm here?
+  data[59] = 0;
+  _fmemcpy(&data[60],&dyno.data,2*60);
+  _fmemcpy(pcm,data,sizeof(pcm));
+  
+  // end new decom
+  }  
+*/
+  
+
+//  original decom unit  
+void pack_pcm(void)
   {
     
   // Prepare pcm data to be sent up the telemetry link in biphase-m (76.8 KHz)
-  // The telemetry frame is 120 16-bit words x 12.
+  // The telemetry frame is 64 words x 12 bits.
   //
   // All ln200 and a/d data was first collected and stored in separate structures
   // in a total of 48 16-bit words.  For pcm transmission, the data must be:
@@ -365,55 +435,102 @@ void pack_pcm(void)  // new decom
   // 3) converted from from lsb first to msb first for the bit synchronizer
   // 4) repacked for the escc from 64 12-bit words to 96 8-bit bytes (shift and mask) for the escc 
   
-  unsigned int data[120];
-  //unsigned i = 0;
-/*  
+  long int data2[64];
+  const int s_offset = 0x0800;
+  const int d_offset = 0x0800;
+  unsigned int status_word;
+  
     // first scale the numbers, add the offset, place in slots
   data2[0] = 0x0faf;         // decom sync 1
   data2[1] = 0x0321;         // decom sync 2
   data2[2] = 5 << 1;         // CB ID, 5 << 1
+
+
+  //data2[4] = ((long)data[64] * 2)    + d_offset;        // 5 msb of prop position
+  //data2[3] = (data2[4] >> 12) * 2 + d_offset;    // 12 lsb of prop position 
+  //new 2/10/2005
+  //data2[4] = (prop.position * 2)    + d_offset;        // 5 msb of prop position
+  //data2[3] = (data2[4] >> 12) * 2 + d_offset;    // 12 lsb of prop position
+
+  
+  // in failsafe; fm failsafe is sc2 ch10, mm32 adc ch26
+  //data2[5] = (data[13] >> 4) & 0x0ff0; // ln200 status word high byte
+  //data2[6] = (data[13] << 4) & 0x0ff0; // ln200 status low
+  // add failsafe flags to ln200 status 5/29/01 jtm
+  //data2[6] = data2[6] | (in_fm_failsafe << 1) | (in_hw_failsafe << 2); 
+  //data2[5] = ((long)ln200.data[13] >> 4) & 0x0ff0; // ln200 status word high byte
+  //data2[6] = ((long)ln200.data[13] << 4) & 0x0ff0; // ln200 status low
+  // add failsafe flags to ln200 status
+  //??????????data2[6] = data2[6] | (in_fm_failsafe << 1) | (in_hw_failsafe << 2); 
+
+    
+  //data2[7] = (frame >> 4) & 0x0ffe; // most significant 11 bits of 16 bit frame counter
+  //data2[8] = (frame << 7) & 0x0f80; // least sig 5 bits of 16 bit frame counter, LEFT ADJUSTED
+  //new 2/10/2005
   data2[7] = (sys.frame >> 4) & 0x0ffe; // most significant 11 bits of 16 bit frame counter
   data2[8] = (sys.frame << 7) & 0x0f80; // least sig 5 bits of 16 bit frame counter, LEFT ADJUSTED
+    
 
+  //data2[10] = ((long)data[5] * 2)    + d_offset;       // z axis angular rate low
+  //data2[9]  = (data2[10] >> 12) * 2 + d_offset;  // high 
+  //new 2/10/2005
   //  "R"
   data2[10] = ((long)ln200.data[5] * 2)    + d_offset;       // z axis angular rate low
   data2[9]  = (data2[10] >> 12) * 2 + d_offset;  // high
   
+  //data2[12] = ((long)data[3] * 2)    + d_offset;       // y axis angular rate low
+  //data2[11] = (data2[12] >> 12) * 2 + d_offset;  // high
+  //new 2/10/2005
   //  "Q"
   data2[12] = ((long)ln200.data[3] * 2)    + d_offset;       // y axis angular rate low
   data2[11] = (data2[12] >> 12) * 2 + d_offset;  // high
     
+  //data2[14] = ((long)data[4] * 2)    + d_offset;       // x axis angular rate low
+  //data2[13] = (data2[14] >> 12) * 2 + d_offset;  // high 
+  //new 2/10/2005
   // "P"
   data2[14] = ((long)ln200.data[4] * 2)    + d_offset;       // x axis angular rate low
   data2[13] = (data2[14] >> 12) * 2 + d_offset;  // high
     
-  
+  //data2[16] = ((long)data[2] * 2)    + d_offset;       // x axis linear accel low
+  //data2[15] = (data2[16] >> 12) * 2 + d_offset;  // high
   //new 2/10/2005
   //data2[16] = ((long)ln200.data[2] * 2)    + d_offset;       // x axis linear accel low
   //data2[15] = (data2[16] >> 12) * 2 + d_offset;  // high
-
+      
+  //data2[18] = ((long)data[1] * 2)    + d_offset;       // y axis linear accel low
+  //data2[17] = (data2[18] >> 12) * 2 + d_offset;  // high
   //new 2/10/2005
   //data2[18] = ((long)ln200.data[1] * 2)    + d_offset;       // y axis linear accel low
   //data2[17] = (data2[18] >> 12) * 2 + d_offset;  // high
 
-  // compensate LN200 Z accel reading for standard gravity: (32.17405 / 2^-6 counts )
+    // compensate LN200 Z accel reading for standard gravity: (32.17405 / 2^-6 counts )
+  //data2[20] = (((long)data[0] + (32.17405 * 64)) * 2)    + d_offset;       // z axis linear accel
+  //data2[19] = (data2[20] >> 12) * 2 + d_offset;
   //new 2/10/2005
   //data2[20] = (((long)ln200.data[0] + ((long)(32.17405 * 64))) * 2)    + d_offset;       // z axis linear accel
   //data2[19] =  (data2[20] >> 12) * 2 + d_offset;
-
-  data2[15] = 0;
-  data2[16] = 0;
-  data2[17] = 0;
-  data2[18] = 0;
-  data2[19] = 0;
-  data2[20] = 0;
-
-  data2[21] = 0;
+  
+  //  depth gauges moved to channels 42, 43, 44 2/17/2005 jtm
+  // depth gauge 1
+  //data2[22] = ((long)obs.data[0] * 2) + d_offset; // low part
+  //data2[21] = (data2[22] >> 12) * 2 + d_offset;   // high part  
   data2[22] = 0;
-  data2[23] = 0;
+  data2[21] = 0;
+
+  
+  // depth gauge 2
+  //data2[24] = ((long)obs.data[1] * 2) + d_offset;
+  //data2[23] = (data2[24] >> 12) * 2 + d_offset;
   data2[24] = 0;
-  data2[25] = 0;
+  data2[23] = 0;
+
+  // depth gauge 3
+  //data2[26] = ((long)obs.data[2] * 2) + d_offset;
+  //data2[25] = (data2[26] >> 12) * 2 + d_offset;
   data2[26] = 0;
+  data2[25] = 0;
+
     
  //  ln200 single channel scale factors
  //  convert 16-bit LN200 native data to 12-bit pcm data
@@ -461,12 +578,16 @@ void pack_pcm(void)  // new decom
   //if(data2[29] < -16384) data2[29] = -16384;
   //data2[29] = (data2[29] >> 3) + s_offset;
   
-  data2[26] = 0;
-  data2[27] = 0;
-  data2[28] = 0;
-  data2[29] = 0;
   
     // scale 16-bit data to 12-bit by dividing by 2^4
+  //data2[30] = (data[36] >> 4)      + s_offset; // prop_cmd
+  //data2[31] = (data[39] >> 4)      + s_offset; // fwd_cmd
+  //data2[32] = (data[37] >> 4)      + s_offset; // strn_cmd
+  //data2[33] = (data[38] >> 4)      + s_offset; // rudd_cmd
+  //data2[34] = (data[42] >> 4)      + s_offset; // failsafe
+  //data2[35] = (data[40] >> 4)      + s_offset; // cage/mode
+  //data2[36] = (data[16] >> 4)      + s_offset; // e_bat
+  //new 2/10/2005
   data2[30] = ((long)obs.data[21] >> 4)      + s_offset; // prop_cmd
   data2[31] = ((long)obs.data[25] >> 4)      + s_offset; // fwd_cmd
   data2[32] = ((long)obs.data[22] >> 4)      + s_offset; // strn_cmd
@@ -476,61 +597,99 @@ void pack_pcm(void)  // new decom
   data2[36] = ((long)obs.data[16] >> 4)      + s_offset; // e_bat
   
     // yaw, ln200 lsb = (2^-15) * 180 deg/count, range = +-180 deg    
+  //data2[37] = int(data[11] * 0.0625)      + s_offset; // yaw180
+  //data2[37] = (data[11] >> 4)      + s_offset; // yaw180
+  //new 2/10/2005
   data2[37] = ((long)ln200.data[11] >> 4)      + s_offset; // yaw180  
 
     // yaw_exp, lsb = (2^-15) * 180 deg/count, range = +-45 deg      
-  data2[38] = 0;
+    // deleted 2/21/2002 jtm
+  //data2[38] = int(data[11] * 0.0625)        + s_offset; // yaw_exp 8/03/01
+  //new 2/10/2005
+  //data2[38] = 0;
   
     // pitch_exp, ln200 lsb = (2^-15) * 180 deg/count, range = +-22.5 deg      
-  data2[39] = 0;
+    // deleted 2/21/2002 jtm    
+  //data2[39] = int(data[9]  * 0.25)         + s_offset; // pitch_exp  8/03/01
+  //new 2/10/2005
+  //data2[39] = 0;
   
     // roll, ln200 lsb = (2^-15) * 180 deg/count, range = +-180 deg      
+  //data2[40] = (data[10] >> 3) + s_offset; // roll
+  //new 2/10/2005
   data2[40] = ((long)ln200.data[10] >> 3) + s_offset; // roll  
 
     // roll_rate_exp, lsb = 2^-6 deg/sec/count, range = +-14 deg/sec  
     // deleted 2/21/2002 jtm    
+  //data2[41] = int(data[4]  * 2.285714286) + s_offset;
+  //data2[41] = 0;
   
     // pitch_rate_exp, lsb = 2^-8 deg/sec/count, range = +-14 deg/sec    
     // deleted 2/21/2002 jtm    
+  //data2[42] = int(data[3]  * 0.571428571) + s_offset; // pitch_rate_exp
+  //data2[42] = 0;
   
   // new depth gauges 2/17/2005 jtm
   data2[41] = ((long)obs.data[0] >> 4) + s_offset; // depth 1
   data2[42] = ((long)obs.data[1] >> 4) + s_offset; // depth 2
   data2[43] = ((long)obs.data[2] >> 4) + s_offset; // depth 3
   
+  
   // new status bits
   data2[44] = sys.fs_status & 0x0fff;
+  //data2[45] = echo.data[1]  & 0x0fff;
   data2[45] = commands.mode  & 0x0fff;
-
     // yaw_rate_exp, lsb = 2^-9 deg/sec/count, range = +-14 deg/sec  
     // deleted 2/21/2002 jtm
+  //data2[43] = int(data[5]  * 0.285714286) + s_offset; // yaw_rate_exp
+  //data2[43] = 0;
   
     // x_accel_exp, lsb = (2^-6) ft/sec^2/count, range = +-17 ft/sec^2      
     // deleted 2/21/2002 jtm    
+  //data2[44] = int(data[2]  * 1.882352941) + s_offset; // x_accel_exp
+  //data2[44] = 0;
     
     // y_accel_exp, lsb = (2^-6) ft/sec^2/count, range = +-17 ft/sec^2        
     // deleted 2/21/2002 jtm    
+  //data2[45] = int(data[1]  * 1.882352941) + s_offset; // y_accel_exp
+  //data2[45] = 0;
   
     // z_accel_exp, lsb = (2^-6) ft/sec^2/count, range = +-17 ft/sec^2
     // NOTE:  LN200 reading is compensated for standard gravity: (32.17405 / 2^-6 counts)
     // deleted 2/21/2002 jtm    
-  data2[46] = 0;
+  //data2[46] = int((data[0] + (32.17405 * 64)) * 1.882352941) + s_offset; // z_accel_exp
+  //data2[46] = 0;
   
     // Pdot_exp, lsb = 2^-4 deg/sec^2, range = +-17 deg/sec^2
     // deleted 2/21/2002 jtm    
-  data2[47] = 0;
+  //data2[47] = int(data[7]  * 7.529411765) + s_offset; // Pdot_exp
+  //data2[47] = 0;
 
   status_word = 0;
+  //data2[48] = status_word | !in_hw_failsafe << 11
+  //                        | (!(taking_data | taking_zeros) <<8)
+  //                        | 0x680
+  //                        | taking_data << 3
+  //                        | taking_zeros << 2
+  //                        | mode << 1
+  //                        | direction;
   data2[48] = status_word;                          
 
     // Qdot_exp, lsb = (2^-6) ft/sec^2/count, range = +-17 ft/sec^2                                
     // deleted 2/21/2002 jtm    
-  data2[49] = 0;
+  //data2[49] = int(data[6] * 1.882352941) + s_offset; // Qdot_exp
+  //data2[49] = 0;
   
     // Rdot_exp, lsb = (2^-7) ft/sec^2/count, range = +-17 ft/sec^2        
     // deleted 2/21/2002 jtm    
-  data2[50] = 0;
+  //data2[50] = int(data[8] * 0.941176471) + s_offset; // Rdot_exp
+  //data2[50] = 0;
     
+    // depth3, bow sensor, data[47], obc ch 31, sc2 ch15, mm32 adc ch17
+    // deleted 2/21/2002 jtm    
+  //data2[51] = (data[47] * 0.074482759) + s_offset; // added 5/21/01 JTM
+  //data2[51] = 0;
+  
     //fore plane lvdt
   data2[52] = (long)obs.data[7];
   data2[52] = (data2[52] >> 4) + s_offset;
@@ -551,104 +710,84 @@ void pack_pcm(void)  // new decom
    // prop_voltage, sc1 ch3, mm32 adc ch3; mc output is +- 5V, 40V/V; module is +-10V
    // NOTE:  data is shifted by 3 instead of 4 because 5B module has
    // +/-10 volt input instead of +/- 5 volt input.  ??????????
+  //data2[56] = (data[19] >> 4) + s_offset;
   //new 2/10/2005
-  data2[56] = ((long)obs.data[18] >> 4) + s_offset;  
-  //data2[56] = 0;
+  //data2[56] = ((long)obs.data[18] >> 4) + s_offset;  
+  // new 11/7/07 - for TB RPM
+  data2[60] = ((long)obs.data[18] >> 4) + s_offset;  
+  
   
    // prop_current, sc1 ch2, mm32 adc ch2; mc output is +- 5V, 20V/V; module is +-10V
    // NOTE:  data is shifted by 3 instead of 4 because 5B module has
    // +/-10 volt input instead of +/- 5 volt input.  
+  //data2[57] = (data[18] >> 4) + s_offset;
   //new 2/10/2005
+  // Used for TB port RPM
   data2[57] = ((long)obs.data[19] >> 4) + s_offset;
-  //data2[57] = 0;
 
     // pitch, lsb = (2^-15) * 180 deg/count, range = +-90 deg        
+  //data2[58] = (data[9] >> 2) + s_offset; // pitch
+  //new 2/10/2005
   data2[58] = ((long)ln200.data[9] >> 2) + s_offset; // pitch
 
+
     // paddle_wheel, module is 500Hz 0-5Volt
+/*
+  if(data[34] < 0) data[34] = 0;  
+  data2[59] = 2047 - ((data[34] >> 4) );
+*/  
   data2[59] = obs.data[3];
   if(data2[59] < 0) data2[59] = 0;    
   data2[59] = (data2[59] >> 4) + s_offset;
 
-    // rpm, 2540 or 5000 pulse/rev, module is 100KHz 0-5Volt
-  data2[60] = obs.data[20];
-  if(data2[60] < 0) data2[60] = 0;  
-  data2[60] = (data2[60] >> 4) + s_offset;  
+    // rpm, 2540 pulse/rev, module is 100KHz 0-5Volt
+/*
+  if(data[35] < 0) data[35] = 0;  
+  data2[60] = 2047 - ((data[35] >> 4) );
+*/  
+  // Take out for TB RPM 11/7/07
+  //data2[60] = obs.data[20];
+  //if(data2[60] < 0) data2[60] = 0;  
+  //data2[60] = (data2[60] >> 4) + s_offset;  
+    
+    // depth1, stern port 
+    // deleted 2/21/2002 jtm  
+  //data2[61] = int(data[32] * 0.074482759) + s_offset;
+  //data2[61] = 0;
   
-*/    
+    // depth2, stern starboard
+    // deleted 2/21/2002 jtm  
+  //data2[62] = int(data[33] * 0.074482759) + s_offset;
+  //data2[62] = 0;
+    
+    // roll_rate, lsb = 2^-6, range = +-55 deg/sec
+    // deleted 2/21/2002 jtm    
+  //data2[63] = int(data[4]  * 0.581818182) + s_offset; // roll_rate
+  //data2[63] = 0;
   
-  data[0]  = 0x7e7e;        // sync word
-  data[1]  = sys.fs_status;
-  data[2]  = sys.op_status;
-  data[3]  = obs.data[0];  // depth 1
-  data[4]  = obs.data[1];  // depth 2
-  data[5]  = obs.data[2];  // depth 3
-  data[6]  = obs.data[3];  // paddle wheel
-  data[7]  = obs.data[4];  // stern1 lvdt
-  data[8]  = obs.data[5];  // stern2 lvdt
-  data[9]  = obs.data[6];  // rudder lvdt
-  data[10] = obs.data[7];  // fore lvdt
-  data[11] = obs.data[8];  // spare lvdt
-  data[12] = obs.data[16];  // ebat volts
-  data[13] = obs.data[17];  // pbat volts
-  data[14] = obs.data[18];  // prop volts
-  data[15] = obs.data[19];  // prop amps
-  data[16] = obs.data[20];  // 5B module rpm (unsigned)
-  data[17] = obs.data[21];  // prop discriminator
-  data[18] = obs.data[22];   // stern1 discriminator
-  data[19] = obs.data[23];   // stern2 discriminator
-  data[20] = obs.data[24];   // rudder discriminator
-  data[21] = obs.data[25];   // fore discriminator
-  data[22] = obs.data[26];   // mode discriminator
-  data[23] = obs.data[27];   // ballast discriminator
-  data[24] = obs.data[28];   // failsafe discriminator
-  data[25] = obs.data[29];   // radio mode discriminator
-  data[26] = obs.data[30];   // key discriminator
-  data[27] = prop.rpm;
-  data[28] = (int)prop.position;           
-  data[29] = ln200.data[0];  // z linear accel 
-  data[30] = ln200.data[1];  // y linear accel
-  data[31] = ln200.data[2];  // x linear accel
-  data[32] = ln200.data[3];  // y angular rate
-  data[33] = ln200.data[4];  // x angular rate
-  data[34] = ln200.data[5];  // z angular rate
-  data[35] = ln200.data[6];  // y angular accel
-  data[36] = ln200.data[7];  // x angular accel
-  data[37] = ln200.data[8];  // z angular accel
-  data[38] = ln200.data[9];  // pitch
-  data[39] = ln200.data[10]; // roll 
-  data[40] = ln200.data[11]; // heading 
-  data[41] = commands.mode;
-  data[42] = commands.rpm;
-  data[43] = commands.rudder;
-  data[44] = commands.stern1;
-  data[45] = commands.stern2;
-  data[46] = commands.fore;
-  data[47] = commands.ballast;
-  data[48] = commands.ds_dmgx;
-  data[49] = commands.ds_dmgy;
-  data[50] = commands.ds_dmgz;
-  data[51] = commands.spare1;
-// These are for PD0 data message
-//  memcpy(&data[52],&adcp.data[154],2); // y_vel_btm;
-//  memcpy(&data[53],&adcp.data[158],2); // z_vel_btm;
-//  memcpy(&data[54],&adcp.data[156],2); // x_vel_btm;
-//  memcpy(&data[55],&adcp.data[146],2); // bm1_rng_to_btm;
-//  memcpy(&data[56],&adcp.data[148],2); // bm2_rng_to_btm;
-//  memcpy(&data[57],&adcp.data[150],2); // bm3_rng_to_btm;
-//  memcpy(&data[58],&adcp.data[152],2); // bm4_rng_to_btm;
-// 
-// These are for PD4/5 data message
-  memcpy(&data[52],&adcp.data[7],2); // y_vel_btm;
-  memcpy(&data[53],&adcp.data[9],2); // z_vel_btm;
-  memcpy(&data[54],&adcp.data[5],2); // x_vel_btm;
-  memcpy(&data[55],&adcp.data[13],2); // bm1_rng_to_btm;
-  memcpy(&data[56],&adcp.data[15],2); // bm2_rng_to_btm;
-  memcpy(&data[57],&adcp.data[17],2); // bm3_rng_to_btm;
-  memcpy(&data[58],&adcp.data[19],2); // bm4_rng_to_btm;
-  data[59] = 0;
-  _fmemcpy(&data[60],&dyno.data,2*60);
-  _fmemcpy(&pcm,&data,sizeof(pcm));
+  //The scaled and offset data is now stored in array pcm[] in 8 bit bytes.
+  //The following for-loop converts 2 16-bit data2[] words into 3 8-bit pcm[] bytes
+  //(shift and mask), and reverses the word msb for lsb,
+  
+  for(int jj=0; jj<32; jj++)
+    {
+    pcm[3*jj] = 0;
+    pcm[3*jj+1] = 0;
+    pcm[3*jj+2] = 0;  
+    
+    int variable1 = (int)(data2[2*jj] >> 4) & 0x00ff;
+    int variable2 = (int)((data2[2*jj]<<4) & 0x00f0) | (int)((data2[2*jj+1]>>8)&0x000f);
+    int variable3 = (int)data2[2*jj+1] & 0x00ff;
+
+                       
+    for(int i=0; i<8; i++)  // reverse the bytes bitwise msb to lsb
+      {
+      if(variable1 & 1<<i) pcm[3*jj]   = pcm[3*jj]   | 0x0080>>i; 
+      if(variable2 & 1<<i) pcm[3*jj+1] = pcm[3*jj+1] | 0x0080>>i;
+      if(variable3 & 1<<i) pcm[3*jj+2] = pcm[3*jj+2] | 0x0080>>i;
+      }
+    }  
+    
   }  
 
 
@@ -675,6 +814,30 @@ void apply_commands(void)
   unsigned int lsb = 0;
   unsigned int msb = 0;
 
+/*
+struct COMMANDS  // new 12/8/2004
+  {
+  unsigned int  sync_word;
+  unsigned int  mode;
+  unsigned int  rpm;
+  unsigned int  rudder;
+  unsigned int  stern1;
+  unsigned int  stern2;
+  unsigned int  fore;  
+  unsigned int  ballast;
+  unsigned int  ln200_mode;
+  unsigned int  ln200_init_heading;
+  unsigned int  ln200_init_latitude;
+  unsigned int  adcp_reset;
+  unsigned int  adcp_heading;
+  unsigned int  ds_send_message;
+  unsigned int  ds_dmgx;
+  unsigned int  ds_dmgy;
+  unsigned int  ds_dmgz;        
+  unsigned int  spare1;
+  } commands;  
+*/     
+
   // get commands from buffered udp packet
   _disable();
   _fmemcpy(&commands, &cmd_buffer[42], sizeof(commands));
@@ -683,40 +846,37 @@ void apply_commands(void)
   // zero out the commands if no response from control for 1 second (100 frames) (new 8/24/2005 jtm)
   if(++time_since_last_command > 100)  
     {                                
-    commands.rpm = 0;
+    //commands.rpm = 0;
+    //changed for TB model 9/26/2007 jtm
+    commands.stbd_rpm = 0;
+    commands.port_rpm = 0;
+    
     commands.rudder = 0x800;
     commands.stern1 = 0x800;
     commands.stern2 = 0x800;
     commands.fore   = 0x800;
     }
 
-  
+/*  
   //  blow the ERS if no response from control for 2 minutes
-  if(time_since_last_command > 12000)  
+  if(time_since_last_command > 12000)
     {                                
     commands.ballast = commands.ballast | ERS_BLOW;
     time_since_last_command = 12000;
     }
+*/
+
+  //  blow the ERS if no response from control for 5 seconds
+  if(packets_rcvd > 100 && time_since_last_command > 500)
+    {                                
+    commands.ballast = commands.ballast | ERS_BLOW;
+    time_since_last_command = 500;
+    }
+    
     
   // apply commands
   // stern1
-  
-//  sprintf(s, "Stern1:    %04x", commands.stern1);
-  int iroll, ipitch, iyaw;
-  float froll, fpitch, fyaw;
-  //memcpy(&iroll, &ds_buffer[1], 2);
-  iroll = ds_buffer[2] + (ds_buffer[1] << 8);
-  ipitch = ds_buffer[4] + (ds_buffer[3] << 8);
-  iyaw = ds_buffer[6] + (ds_buffer[5] << 8);
-  //memcpy(&ipitch, &ds_buffer[3], 2);
-  //memcpy(&iyaw, &ds_buffer[5], 2);
-  froll =  iroll * float(360.0/65536.0);
-  fpitch = ipitch * float(360.0/65536.0);
-  fyaw =   iyaw * float(360.0/65536.0);
-  int i = sprintf(s, "Micro Strain  %02x  ",ds_buffer[0]);
-  sprintf(s+i, "%+06.1f  %+06.1f  %+06.1f        ", froll, fpitch, fyaw);
-//  sprintf(s+i, "%x%x  %x%x  %x%x   ", ds_buffer[1],ds_buffer[2],ds_buffer[3],ds_buffer[4],ds_buffer[5],ds_buffer[6]);
-
+  sprintf(s, "Stern1:    %04x", commands.stern1);
   PC_DispStr(20,16, (unsigned char *)s, DISP_FGND_BLACK + DISP_BGND_RED);
   while(_inp(OBS_BASE+DACLSB) & 0x80);
   _outp(OBS_BASE+DACLSB, commands.stern1 & 0xff);
@@ -726,8 +886,6 @@ void apply_commands(void)
 
   // stern2
   sprintf(s, "Stern2:    %04x", commands.stern2);
-//  sprintf(s, "sys.op_status:    %04x", sys.op_status);
-
   PC_DispStr(20,17, (unsigned char *)s, DISP_FGND_BLACK + DISP_BGND_RED);
   while(_inp(OBS_BASE+DACLSB) & 0x80);
   _outp(OBS_BASE+DACLSB, commands.stern2 & 0xff);
@@ -752,10 +910,17 @@ void apply_commands(void)
   _inp( OBS_BASE+DACMSB);
   
   // prop
-  sprintf(s, "Prop:      %04x", commands.rpm);
+  // changed for TB model 9/26/2007 jtm
+  sprintf(s, "Prop:      %04x  %04x", commands.stbd_rpm, commands.port_rpm);
   PC_DispStr(20,18, (unsigned char *)s, DISP_FGND_BLACK + DISP_BGND_RED);
-  te5650SetMotor(commands.rpm);
+  te5650SetAxis(1, STBD_PROP);
+  te5650SetMotor(commands.stbd_rpm);
   te5650Update();
+  // new for TB model 9/26/2007 jtm
+  te5650SetAxis(1, PORT_PROP);
+  te5650SetMotor(commands.port_rpm);
+  te5650Update();  
+  
 
   // ballast
   // ers blow  
@@ -771,6 +936,7 @@ void apply_commands(void)
     write_bit(VALVE5, VALVEOFF);
     write_bit(VALVE6, VALVEOFF);
     write_bit(ERS,    ERSBLOW);
+    //return;
     }
   
   // pfs blow
@@ -795,6 +961,7 @@ void apply_commands(void)
     write_bit(VALVE4, VALVEOFF);
     write_bit(VALVE5, VALVEOFF);
     write_bit(VALVE6, VALVEOFF);
+    //return;
     }
 
   // all blow is pump,1,4,5
@@ -807,6 +974,7 @@ void apply_commands(void)
     write_bit(VALVE4, VALVEON);
     write_bit(VALVE5, VALVEON);
     write_bit(VALVE6, VALVEOFF);
+    //return;
     }
 
   // all flood is pump,2,3,6
@@ -819,6 +987,7 @@ void apply_commands(void)
     write_bit(VALVE4, VALVEOFF);
     write_bit(VALVE5, VALVEOFF);
     write_bit(VALVE6, VALVEON);
+    //return;
     }
     
   // trim forward is pump,2,5
@@ -831,6 +1000,7 @@ void apply_commands(void)
     write_bit(VALVE4, VALVEOFF);
     write_bit(VALVE5, VALVEON);
     write_bit(VALVE6, VALVEOFF);
+    //return;
     }
     
   // trim aft is pump,3,4
@@ -843,6 +1013,7 @@ void apply_commands(void)
     write_bit(VALVE4, VALVEON);
     write_bit(VALVE5, VALVEOFF);
     write_bit(VALVE6, VALVEOFF);
+    //return;
     }
     
   // forward blow
@@ -870,7 +1041,7 @@ void apply_commands(void)
     {
     send_message = 1;
     //_fstrcpy(acoustic_message, "abcdef");
-    _fmemcpy(&acoustic_message, &commands.ds_dmgx, sizeof(acoustic_message));
+    _fmemcpy(&acoustic_message, &commands.ds_dmgx1, sizeof(acoustic_message));
     }
   }
   
@@ -915,6 +1086,11 @@ void configure_obc(void)
   adcp.new_data = 0;
   adcp.frame = frame;
   
+  // new TB model 9/26/2007 jtm
+  
+  commands.stbd_rpm = 0;
+  commands.port_rpm = 0;
+  
   init_io(0x120);
   write_bit(PUMP, PUMPOFF);
   write_bit(VALVE1, VALVEOFF);
@@ -929,17 +1105,13 @@ void configure_obc(void)
   configure_escc();
   init_tech80();
   init_sys_timer();
-  cout << "Timer configured OK." << endl;
   init_com1();
   init_com2();
   init_com4();
   configure_enet();
-  cout << "Packet driver loaded OK." << endl;
   configure_dmm32a(); // onboard sensor adc
-  cout << "Dmm32A OK." << endl;
   configure_dmm32b(); // dyno adc
-  cout << "Dmm32B a OK." << endl;
-  init_screen();  
+  init_screen();
   
   }
 
@@ -948,8 +1120,9 @@ void init_tech80(void)
   {
   cout << "te5650InitSw:    " << hex << te5650InitSw() << dec << endl;
   cout << "te5650InitServo: " << te5650InitServo(0x400, TE5650TYPE_DAC16) << endl;
-  cout << "te5650SetAxis:   " << te5650SetAxis(1,1) << endl;
-  te5650PhasesPolarity(1,1,1);  // invert A,B,I phases
+  cout << "te5650SetAxis:   " << te5650SetAxis(1,STBD_PROP) << endl;
+  //te5650PhasesPolarity(1,1,1);  // invert A,B,I phases  old encoder
+  te5650PhasesPolarity(1,1,1);  // no invert A,B, invert I phases  new encoder
   te5650Update();
   te5650CaptureIndex();  
   te5650Update();
@@ -959,7 +1132,19 @@ void init_tech80(void)
   te5650Update();
   te5650SetMotor(0);
   te5650Update();
-  cout << "Tech80 configured OK." << endl;
+
+  cout << "te5650SetAxis:   " << te5650SetAxis(1,PORT_PROP) << endl;
+  //te5650PhasesPolarity(1,1,1);  // invert A,B,I phases  old encoder
+  te5650PhasesPolarity(1,1,1);  // no invert A,B, invert I phases  new encoder
+  te5650Update();
+  te5650CaptureIndex();  
+  te5650Update();
+  te5650ResetCapture();
+  te5650Update();
+  te5650MotorOff();
+  te5650Update();
+  te5650SetMotor(0);
+  te5650Update();
 
   }
   
@@ -973,7 +1158,6 @@ void init_sys_timer(void)
   _outp(0x40, 0xff);                           // load timer divisor LSB, then MSB
   _outp(0x40, 0xff);
   _enable();
-  //cout << "Timer configured OK." << endl;
   }
 
 
@@ -996,14 +1180,16 @@ void configure_enet(void)
   cout << "Handle: " << handle << endl;
   cout << "Driver_info() error: " << driver_info(handle) << endl;
   cout << "Rpm_sf: " << rpm_sf << endl;
-
+/*
+  cout << "..... press <spacebar> to continue....." << endl;
+  while(!kbhit());
+  _getch();
+*/  
   }
 
   
 void configure_escc(void)
   {
-  //int i;
-  //for(i=0;i<96;i++) pcm[i] = 'a';  // clear pcm data buffer
   
   // open the two escc communications ports using add_port() function
   // parameters: (base address of escc board,
@@ -1103,11 +1289,10 @@ void configure_escc(void)
   // void Cescc::set_clock_generator(unsigned port,     //either channel A or B will work
   //                                 unsigned long hval,//stuffed hex value from BitCalc
   //                                 unsigned nmbits)   //number of bits in stuffed value
+  escc1.set_clock_generator(channela, 0x5d31c0L, 0x18);  // old decom
   
-  //escc1.set_clock_generator(channela, 0x5d31c0L, 0x18);
-  
-    // new 2.4576 MHz clock for 19.2 KHz PCM bit rate 12/19/2007 jtm
-  escc1.set_clock_generator(channela, 0x5d51c0L, 24);
+  // new 2.4576 MHz clock for 19.2 KHz PCM bit rate 12/19/2007 jtm
+  //escc1.set_clock_generator(channela, 0x5d51c0L, 24);      // new decom
   
   
   // Configure channel_b for biphase-m operation for pcm telemetry.
@@ -1186,32 +1371,49 @@ void configure_escc(void)
   
 void wait_for_time_tick(void)
   {
+  static unsigned toggle = 0;
   unsigned pcm_lockup = 1;
   
-  pcm_sent = 0;
-  
+  pcm_sent = 0;                          // residual crap, does nothing
+    
   while(frame < next_frame)              // idle loop waits until beginning of next frame
     {                                    // frame is incremented in dmm32a isr by 100 Hz timer
     if(data_ready)
-      {
+      {                                  // wait until adc's are done before querying the ln200
       data_ready = 0;
+      query_ln200();
       }
     if(escc1.istxing[channelb]==0)
       {
-      if(pcm_sent == 0)
+      pcm_sent = 0;
+      send_pcm();
+      pcm_lockup = 0;
+      }  
+    }
+  
+  if(pcm_lockup) escc1.clear_tx_buffer(channelb);
+    
+/*  // new decom    
+    if(frame%10 == 0)                    // send pcm message every tenth frame for new decom
+      {
+      if(escc1.istxing[channelb]==0)     // make sure last pcm message went out 
         {
-          pcm_sent = 1;
-          send_pcm();
-          pcm_lockup = 0;
+        pcm_sent = 0;
+        send_pcm();
+        pcm_lockup = 0;
+        }  
+      if(pcm_lockup)
+        {
+        escc1.clear_tx_buffer(channelb);  
+        pcm_sent = 0;
+        send_pcm();
         }
       }
-        
-    }    
+    }
   
-//  if(pcm_lockup) escc1.clear_tx_buffer(channelb);
-      
+*/  
+    
   sprintf(s, "Pitch:   %04x  %10.2f deg", ln200.data[9], (ln200.data[9] / 182.044));   // Pitch
-  //sprintf(s, "Pitch:   %04x  %10.2f deg", frame, (ln200.data[9] / 182.044));   // Pitch
   PC_DispStr(0,6, (unsigned char *)s, DISP_FGND_BLACK + DISP_BGND_RED);
   sprintf(s, "Roll:    %04x  %10.2f deg", ln200.data[10], (ln200.data[10] / 182.044));  // Roll
   PC_DispStr(0,7, (unsigned char *)s, DISP_FGND_BLACK + DISP_BGND_RED);
@@ -1236,9 +1438,6 @@ void wait_for_time_tick(void)
   sprintf(s, "PPos:    %08d", prop.position);
   PC_DispStr(0,15, (unsigned char *)s, DISP_FGND_BLACK + DISP_BGND_RED);     // Prop position
     
-//  sprintf(s, "GPS: %s", prop.position);
-//  PC_DispStr(0,15, (unsigned char *)s, DISP_FGND_BLACK + DISP_BGND_RED);     // Prop position
-
   next_frame = frame + 1;                
   
   //clr_bit(48);
@@ -1256,12 +1455,7 @@ void start_data_collection(void)
 void query_ln200(void)
   {
   prep_ln200_command();                        // build the ln200 initialization command
-  //if((commands.ln200_mode & 0x8000) || send_once )
-    {
-    escc1.tx_port(channela, ln200_command, 14);  // and send it to the ln200
-    send_once = 0;
-    ready = 1;
-    }
+  escc1.tx_port(channela, ln200_command, 14);  // and send it to the ln200
   }
   
 
@@ -1270,9 +1464,8 @@ void configure_dmm32a(void)
   _disable();
   _outp(OBS_BASE+FCR, FIFORST);                   // reset the fifo
 
-  _outp(OBS_BASE+MCR, PAGE1);                   
-  //_outp(OBS_BASE+15,  0x80);                  // set dio ports for outputs, mode0, old ln200
-  _outp(OBS_BASE+15,  0xff);                    // set dio ports for input mode 1, new ln200
+  _outp(OBS_BASE+MCR, PAGE1);                     // set dio ports for outputs, mode0
+  _outp(OBS_BASE+15,  0x80);
   _outp(OBS_BASE+MCR, PAGE0);
 
   _outp(OBS_BASE+LCR,  0);                         // set the range of channels to scan
@@ -1282,11 +1475,11 @@ void configure_dmm32a(void)
   while(_inp(OBS_BASE+ARR) & WAIT);                // wait for the adc circuits to settle
 
   _outp(OBS_BASE+MCR, PAGE2);                      // configure ctc0 for falling edge trigger
-  _outp(OBS_BASE+CCR , 1);
+  _outp(OBS_BASE+15 , 1);
   _outp(OBS_BASE+MCR, PAGE0);
   _outp(OBS_BASE+CTCCR, 0x42);                     // set CTC0 to 10 KHz input
   _outp(OBS_BASE+MCR, PAGE0);                      // access the 82C54's registers
-  _outp(OBS_BASE+CCR, CTC0 | LSBMSB | MODE2 | BINARY);// program the 82C54's mode
+  _outp(OBS_BASE+15, CTC0 | LSBMSB | MODE2 | BINARY);// program the 82C54's mode
   _outp(OBS_BASE+12, 0x64);                        // load divisor LSB (100 or 0x0064)
   _outp(OBS_BASE+12, 0x00);                        // load divisor MSB
                                                    // 10 KHz / 100 = 100 Hz frame rate
@@ -1294,8 +1487,7 @@ void configure_dmm32a(void)
   _dos_setvect(11-8+0x70, isr_dmm32a);             // install dmm32a isr vector
   _outp(0xa1, _inp(0xa1) & 0xf7);                  // unmask irq11 at pic
 
-  _outp(OBS_BASE+ICR, ADINTE | DINTE | TINTE);// enable adc, dio and timer interrupts, old ln200
-  //_outp(OBS_BASE+ICR, ADINTE | TINTE);      // enable adc and timer interrupts. old ln200
+  _outp(OBS_BASE+ICR, ADINTE | TINTE);             // enable adc and timer interrupts
   _enable();
   }
   
@@ -1331,22 +1523,12 @@ void interrupt isr_dmm32a(void)
     _fmemcpy(obs_buffer, obs_array, sizeof(obs_array));  // buffer the data
     obs_new_data = 1;                                    // flag the system new data available
     obs_data_frame = frame;                              // record the frame number
-        
-    _outp(OBS_BASE+FCR, FIFORST);                       // reset the fifo
-    _outp(OBS_BASE+LCR,  0);                            // reset the range of channels to scan
-    _outp(OBS_BASE+HCR,  31);
-    _outp(OBS_BASE+FCR, SCANEN);                           // enable scan interrupts
     }
-    
-  if(_inp(OBS_BASE+ISR) & DINT)        // a pulse was detected at dio LATCH  input
-    {
-    query_ln200();
-    _outp(OBS_BASE+MCR, PAGE1);       // switch to page 1 for dio access
-    _inp(OBS_BASE+PORTA);                // read data at port a and discard, resets ACK output
-    _outp(OBS_BASE+MCR, PAGE0);       // switch back to page 0
-    }
-  
   _outp(OBS_BASE+MCR, INTRST);                           // reset the dmm32's interrupt circuit    
+  _outp(OBS_BASE+FCR, FIFORST);                          // reset the fifo
+  _outp(OBS_BASE+LCR,  0);                               // reset the range of channels to scan
+  _outp(OBS_BASE+HCR,  31);
+  _outp(OBS_BASE+FCR, SCANEN);                           // enable scan interrupts
 
   _outp(0xa0, 0x20);                                     // slave EOI
   _outp(0x20, 0x20);                                     // master EOI  
@@ -1365,7 +1547,7 @@ void configure_dmm32b(void)
   while(_inp(DYNO_BASE+ARR) & WAIT);                     // wait for adc inputs to settle
 
   _outp(DYNO_BASE+MCR, PAGE1);                           // set the 8255 dio ports for outputs, mode0
-  _outp(DYNO_BASE+CCR, 0x80);
+  _outp(DYNO_BASE+15,  0x80);
   _outp(DYNO_BASE+MCR, PAGE0);
 
   old_dmm32b_vect = _dos_getvect(12-8+0x70);             // save old irq12 isr vector
@@ -1374,7 +1556,7 @@ void configure_dmm32b(void)
 
   _outp(DYNO_BASE+CTCCR, _inp(DYNO_BASE+CTCCR) | 0x02);  // set 8254 ctc0 for 10 MHz input
   _outp(DYNO_BASE+MCR, PAGE2);                           // set ctc0 for falling edge trigger
-  _outp(DYNO_BASE+CCR , 1);
+  _outp(DYNO_BASE+15 , 1);
   _outp(DYNO_BASE+MCR, PAGE0);
   _outp(DYNO_BASE+ICR, ADINTE | TINTE);                  // enable adc & ctc0 timer interrupts
 
@@ -1445,7 +1627,7 @@ void interrupt isr_dmm32b(void)
         time_stamp(&prop_position_time);
         time_stamp(&prop_rpm_time);
         prop_position_absolute_current = prop_pos;
-        prop_position = (prop_pos - prop_index);  // - 7980;  // 5/13/2005 jtm
+        prop_position = (prop_pos - prop_index) - 17609;  // jtm 5/8/2007
         
         for(i=0; i<6; i++)                                // read and buffer the dyno data  
           {
@@ -1557,6 +1739,7 @@ void terminate(void)
   shutdown_enet();
   shutdown_com1();
   shutdown_com2();
+  shutdown_com4();
   shutdown_dmm32a();
   shutdown_dmm32b();
   shutdown_escc();
@@ -1639,8 +1822,14 @@ void shutdown_enet(void)
   
 void shutdown_tech80(void)
   {
+  te5650SetAxis(1,STBD_PROP);
   te5650SetMotor(0);
+  te5650Update();
+  te5650SetAxis(1,PORT_PROP);
+  te5650SetMotor(0);
+  te5650Update();  
   }
+  
 
 void shutdown_dmm32a(void)
   {                                           // onboard sensors, irq 11
@@ -1670,6 +1859,7 @@ void shutdown_escc(void)
   {
   escc1.kill_port(channela);
   escc1.kill_port(channelb);
+  // nothing yet
   }
   
 
@@ -1687,24 +1877,22 @@ void build_packet(void)
   long prop_delta_time_low = 0;
   unsigned long prop_delta_time = 0;
 
+/*
+  for(j=0;j<1514;j++)
+    {
+    data_pkt[j]=0;
+    }
+*/    
+    
   _fmemset(data_pkt, 0, sizeof(data_pkt));
   
   _disable();             // turn off other services while we copy data
   
   sys.packet_number++;
   sys.frame = frame - 1;  // previous frame number, not this one
-//  sys.fs_status = 0;
+  sys.fs_status = 0;
   sys.fs_status = (read_port(FSHIGH) << 8) | read_port(FSLOW);
-//  sys.fs_status = ((read_port(FSHIGH) << 8) | read_port(FSLOW)) ^ 0xffff;
-
-//checkout digial inputs port 3 and 4 - all OK (HV 2/7/08)
-//  sys.fs_status = _inp(UIO48BASE+3);
-
-//why sys.op_status set to 0?
-//  sys.op_status = 0;
-//  sys.op_status = (_inp(UIO48BASE+4) ^ 0xf);//reverse logic, FS0-3 are bits 0-3 on port 4
-  sys.op_status = _inp(UIO48BASE+4) ;//FS0-3 are bits 0-3 on port 4
-
+  sys.op_status = read_port(FSHIGH2);
   sys.time_high = frame_time.high;
   sys.time_low  = frame_time.low;
   
@@ -1729,8 +1917,10 @@ void build_packet(void)
   prop.rpm_time_low  = prop_rpm_time.low;
   prop.position_time_high = prop_position_time.high;
   prop.position_time_low  = prop_position_time.low;
-  while(prop_position < 0) prop_position += 20000; //10160;  // normalize the prop position
-  while(prop_position > 20000) prop_position -= 20000;   //10160;
+//  while(prop_position < 0) prop_position += 10160;  // old encoder normalize the prop position
+  while(prop_position < 0) prop_position += 20000;    // new encoder normalize the prop position
+//  while(prop_position > 10159) prop_position -= 10160; // old encoder
+  while(prop_position > 19999) prop_position -= 20000;   // new encoder
   prop.position = prop_position;
   
   prop_delta_position = prop_position_absolute_current - prop_position_absolute_previous;
@@ -1748,8 +1938,9 @@ void build_packet(void)
   if(prop_delta_time != 0)
      prop.rpm = (int) (rpm_sf * ((float)prop_delta_position / (float)prop_delta_time));
 */
-  
-  prop.rpm = (int) ((float)prop_delta_position * 0.590551f);
+  // rpm scale factor = 60 sec/min  x  rev/numcounts  x  1/.01 sec
+//  prop.rpm = (int) ((float)prop_delta_position * 0.590551f);  // old encoder
+  prop.rpm = (int) ((float)prop_delta_position * 0.3f);  // new encoder
   
   prop_position_absolute_previous = prop_position_absolute_current;
   prop_position_time_previous.high = prop_position_time.high;
@@ -1778,9 +1969,7 @@ void build_packet(void)
   ds.frame = ds_data_frame;
   ds.time_high = ds_time.high;
   ds.time_low  = ds_time.low;
-  //_fmemcpy(&ds.data, &ds_buffer, sizeof(ds.data));  
-  _fmemcpy(&ds.data, &ds_buffer, sizeof(ds_buffer));  
-  
+  _fmemcpy(&ds.data, &ds_buffer, sizeof(ds.data));  
   
   adcp.new_data = adcp_new_data;
   adcp_new_data = 0;
@@ -1788,14 +1977,14 @@ void build_packet(void)
   adcp.time_high = adcp_time.high;
   adcp.time_low  = adcp_time.low;
   _fmemcpy(&adcp.data, &adcp_buffer, sizeof(adcp.data));  
-
+  
   gps.new_data = gps_new_data;
   gps_new_data = 0;
   gps.frame = gps_data_frame;
   gps.time_high = gps_time.high;
   gps.time_low  = gps_time.low;
-  _fmemcpy(&gps.data, &gps_buffer, sizeof(gps.data));    
-  
+  _fmemcpy(&gps.data, &gps_buffer, sizeof(gps.data));  
+
   _enable();
   
   //_fmemcpy(data_pkt, micron_mac, 6);    // insert destination mac addr;
@@ -1892,7 +2081,7 @@ void build_packet(void)
       }
     j = j+2;
     }
-  checksum16 = (unsigned)(checksum32 & 0x0000ffff); // convert back to 16-bit
+  checksum16 = (unsigned)(checksum32 & 0x0000ffff);          // convert back to 16-bit
   checksum16 = ~checksum16;                      // take the 1's complement
   data_pkt[24] = high_byte(checksum16);          // and insert into header
   data_pkt[25] = low_byte(checksum16);
@@ -1955,7 +2144,7 @@ void build_packet(void)
   _fmemcpy(&data_pkt[i], &gps, sizeof(gps));
   i += sizeof(gps);
 
-  // now calculate and insert the real upd checksum
+  // now calculate and insert the real udp checksum
   // from the udp pseudo-header and true header
   for(j=0;j<8;j++) udp_pseudo[j] = data_pkt[j+26];  // source & dest ip addr
   udp_pseudo[8] = 0;
@@ -1989,7 +2178,7 @@ void build_packet(void)
       }
     j = j+2;
     }
-  checksum16 = (unsigned)(checksum32 & 0x0000ffff); // convert back to 16-bit
+  checksum16 = (unsigned)(checksum32 & 0x0000ffff);          // convert back to 16-bit
   checksum16 = ~checksum16;                      // take the 1's complement
   if(checksum16 == 0) checksum16 = 0xffff;       // only for udp/tcp
   data_pkt[40] = high_byte(checksum16);
@@ -2017,7 +2206,9 @@ void init_screen(void)
   char s[81];
 
   PC_DispClrScr(DISP_FGND_LIGHT_GRAY + DISP_BGND_RED);
-
+//  PC_DispClrRow(0, DISP_BGND_LIGHT_GRAY);
+//  PC_DispClrRow(1, DISP_BGND_LIGHT_GRAY);
+  
   sprintf(s, "%s", 
 "                       Autonomous Model Onboard Computer                        ");
   PC_DispStr(0,0, (unsigned char *)s, DISP_FGND_BLACK + DISP_BGND_LIGHT_GRAY);
@@ -2036,6 +2227,7 @@ void init_screen(void)
 void prep_ln200_command(void)
   {
   #define YES 1
+  //#define X_AXIS 0.0f
   #define X_AXIS -0.48f
   #define Y_AXIS 0.0f
   #define Z_AXIS 0.0f
@@ -2043,81 +2235,55 @@ void prep_ln200_command(void)
 
   int i;
   int heading;
-  unsigned latitude_valid = 0;
-  unsigned boresights_valid = 0;
-  unsigned heading_valid = 0;
+  unsigned latitude_valid;
+  unsigned boresights_valid;
+  unsigned heading_valid;
   unsigned bit = 0;
   unsigned mode = 0;
   int      latitude;
   int      x_axis;
   int      y_axis;
   int      z_axis;
+  
   unsigned icmd[7];
   
-  //heading = (int) (-52.0 * 182.044);
-  //heading = (int) (+128.0 * 182.044);
-  //latitude = (int) (LATITUDE * 182.044); // LN200 operating latitude,+-degrees, see ln200 ICD
-  x_axis = (int) (X_AXIS * 182.044);     // LN200 boresight rotations,+-degrees
-  y_axis = (int) (Y_AXIS * 182.044);
-  z_axis = (int) (Z_AXIS * 182.044);
+  static unsigned do_once = 1;
   
-/*  
+  //heading = (int) (-52.0 * 182.044);   // along wavemaker
+  heading =  (int) (-53.5 * 182.044);    // Tighe says so.
+//  heading =  (int) (26.5 * 182.044);    // Aberdeen Alignment - 8/28/06 sjc
+  latitude = (int) (LATITUDE * 182.044); // LN200 operating latitude,+-degrees, see ln200 ICD
+  x_axis =   (int) (X_AXIS * 182.044);     // LN200 boresight rotations,+-degrees
+  y_axis =   (int) (Y_AXIS * 182.044);
+  z_axis =   (int) (Z_AXIS * 182.044);
+    
   //mode = 0;      //LN200 modes are 0 (free inertial) and 1 (fast leveling)
   //mode = 1;
-
-  //if(commands.mode & 0x1000) boresights_valid = 1;
-  if(commands.mode & 0x2000) latitude_valid = 1;
-  if(commands.mode & 0x4000) heading_valid = 1;
-  
-  //heading_valid = YES;                 // heading valid?
+    
+  latitude_valid  = YES;               // latitude valid?
+  heading_valid = YES;                 // heading valid?
   boresights_valid = YES;              // boresight rotations valid?
-  bit = NO;                            // run Built In Test?
+  bit = NO;
   
+  //ln200_mode = 0;
+  //if (commands.ln200_mode & 0x0010) commands.ln200_mode=0;               
+  if (commands.ln200_mode & 0x0010) commands.ln200_mode = commands.ln200_mode | 0x0001;               
   
-  if(commands.ln200_mode & 0x8000)
+  if (do_once)   // set heading to presets at model startup
     {
-    latitude = (int) (commands.ln200_init_latitude * 182.044);
-    heading  = (int) (commands.ln200_init_heading * 182.044);
+    do_once = 0;
+    commands.ln200_mode = 0x0011;
     }
-    
-  if(send_once == 1)
-    {
-    heading = (int) (+128.0 * 182.044);
-    latitude = (int) (LATITUDE * 182.04);
-    mode = 1;
-    latitude_valid = 1;
-    heading_valid = 1;
-    }
-
-//    latitude_valid = 0;
-//    heading_valid = 0;
-    
-  if(ready == 1)
-    {
-    heading = (int) (+128.0 * 182.044);
-    heading = (int) (commands.ln200_init_heading * 182.044);
-    latitude = (int) (LATITUDE * 182.04);
-    mode = (commands.ln200_mode & 0x0007);
-    latitude_valid = 1;
-    heading_valid = 1;
-//    if(commands.mode & 0x2000) latitude_valid = 1;
-//    if(commands.mode & 0x4000) heading_valid = 1;
-
-    }
-  
-  
-  
-      
+                 
   icmd[0]=0x0000;                      // assemble the command word icmd[]
-  icmd[0]=icmd[0]|mode;
+  //icmd[0]=icmd[0]|mode;
+  icmd[0]=icmd[0]|commands.ln200_mode & 0x0007;
   icmd[0]=icmd[0]|(boresights_valid<<3);
   icmd[0]=icmd[0]|(bit<<4);
   icmd[0]=icmd[0]|(latitude_valid<<8);
-  icmd[0]=icmd[0]|(heading_valid<<9);
-*/
-  icmd[0] = commands.ln200_mode;
-  icmd[1]=commands.ln200_init_latitude;
-  icmd[2]=commands.ln200_init_heading;
+  icmd[0]=icmd[0]|((commands.ln200_mode & 0x0010) << 5);
+  icmd[1]=latitude;
+  icmd[2]=heading;
   icmd[3]=x_axis;
   icmd[4]=y_axis;
   icmd[5]=z_axis;
@@ -2144,5 +2310,9 @@ void time_stamp(struct TIMER * t_struct)
 
 void heartbeat(void)
   {
-  write_bit(HEARTBEAT, (!read_bit(HEARTBEAT)));
+  //if(time_since_last_command >= 100)
+    {
+    write_bit(HEARTBEAT, (!read_bit(HEARTBEAT)));
+    }
   }
+  

@@ -1,6 +1,15 @@
 // dmmtest.h
 // 2/18/2004
 
+// tech80 defines added 9/25/2007 for TB model jtm   
+
+
+#define STBD_PROP 1
+#define PORT_PROP 2
+
+#define ADCPLEN 213  // new adcp PD0 message length
+#define PCMLEN  120  // new decom frame size
+
 void init_tech80(void);
 void configure_obc(void);
 void configure_escc(void);
@@ -26,7 +35,6 @@ void shutdown_dmm32a(void);
 void shutdown_dmm32b(void);
 void shutdown_tech80(void);
 void shutdown_escc(void);
-void shutdown_uio48(void);
 void query_ln200(void);
 unsigned char low_byte(unsigned int);
 unsigned char high_byte(unsigned int);
@@ -37,4 +45,5 @@ void prep_ln200_command(void);
 void time_stamp(struct TIMER *);
 void heartbeat(void);
 void send_pcm(void);
+void new_pack_pcm(void);
 void pack_pcm(void);

@@ -41,8 +41,6 @@ extern unsigned ln200_new_data;
 extern unsigned long ln200_data_frame;
 extern char pcm[96];
 
-int odd = 0;
-
 Cescc *t1; // makes the instance of Cescc class object visible to the ISR
           
 Cescc::Cescc()  // constructor
@@ -1061,17 +1059,13 @@ void interrupt far Cescc::escc_isr(void)
           // added 3/25/2004 jtm
           if(k==33)
             {
-            if(odd) // keep only every other ln200 message since they are 
-              {     // coming in at 200 Hz
-              ln200_rx_num++;
-              
-              _fmemcpy(ln200_buffer, irxbuf->frame, k);  // copy message to app buffer
-              ln200_new_data = 1;                      // flag new data available
-              ln200_data_frame = frame;                     // record frame number
-              time_stamp(&ln200_time);
-              }
-            odd = !odd;  
-            }  
+            ln200_rx_num++;
+            //_fmemcpy(ln200.data, irxbuf->frame, k);  // copy message to app buffer
+            _fmemcpy(ln200_buffer, irxbuf->frame, k);  // copy message to app buffer
+            ln200_new_data = 1;                      // flag new data available
+            ln200_data_frame = frame;                     // record frame number
+            time_stamp(&ln200_time);
+            }
           irxbuf->valid = 0;                       // release the escc buffer to be used again  
           irxbuf->no_bytes = 0;
           // end autonomous-specific code

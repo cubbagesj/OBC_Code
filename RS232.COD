@@ -1,0 +1,2138 @@
+;	Static Name Aliases
+;
+	TITLE   c:\cb8\rs232.cpp
+	.286p
+INCLUDELIB      LLIBCE
+INCLUDELIB	OLDNAMES.LIB
+RS232_TEXT	SEGMENT  WORD PUBLIC 'CODE'
+RS232_TEXT	ENDS
+_DATA	SEGMENT  WORD PUBLIC 'DATA'
+_DATA	ENDS
+CONST	SEGMENT  WORD PUBLIC 'CONST'
+CONST	ENDS
+_BSS	SEGMENT  WORD PUBLIC 'BSS'
+_BSS	ENDS
+DGROUP	GROUP	CONST, _BSS, _DATA
+	ASSUME DS: DGROUP, SS: DGROUP
+PUBLIC  ?tx1_index@@3IE
+PUBLIC  ?tx1_counter@@3IE
+PUBLIC  ?tx1_len@@3IE
+PUBLIC  ?rx1_index@@3IE
+PUBLIC  ?tx2_index@@3IE
+PUBLIC  ?tx2_counter@@3IE
+PUBLIC  ?tx2_len@@3IE
+PUBLIC  ?rx2_index@@3IE
+PUBLIC  ?tx4_index@@3IE
+PUBLIC  ?tx4_counter@@3IE
+PUBLIC  ?tx4_len@@3IE
+PUBLIC  ?rx4_index@@3IE
+EXTRN	__disable:FAR
+EXTRN	?time_stamp@@ZAXPEUTIMER@@@Z:FAR
+EXTRN	__dos_setvect:FAR
+EXTRN	__fmemset:FAR
+EXTRN	_memcpy:FAR
+EXTRN	__inp:FAR
+EXTRN	__enable:FAR
+EXTRN	__outp:FAR
+EXTRN	__dos_getvect:FAR
+EXTRN	?adcp_buffer@@3QIEI:BYTE
+EXTRN	?adcp_new_data@@3IE:WORD
+EXTRN	?adcp_data_frame@@3KE:DWORD
+EXTRN	?ds_buffer@@3QIEI:BYTE
+EXTRN	?ds_new_data@@3IE:WORD
+EXTRN	?ds_data_frame@@3KE:DWORD
+EXTRN	?gps_buffer@@3QIEI:BYTE
+EXTRN	?gps_new_data@@3IE:WORD
+EXTRN	?gps_data_frame@@3KE:DWORD
+EXTRN	?com1_tx@@3IE:WORD
+EXTRN	?com2_tx@@3IE:WORD
+EXTRN	?com4_tx@@3IE:WORD
+EXTRN	?frame@@3KE:DWORD
+EXTRN	?adcp_time@@3UTIMER@@E:FWORD
+EXTRN	?ds_time@@3UTIMER@@E:FWORD
+EXTRN	?gps_time@@3UTIMER@@E:FWORD
+_DATA      SEGMENT
+?tx1_index@@3IE	DW	00H
+?tx1_counter@@3IE	DW	00H
+?tx1_len@@3IE	DW	00H
+?rx1_index@@3IE	DW	00H
+?tx2_index@@3IE	DW	00H
+?tx2_counter@@3IE	DW	00H
+?tx2_len@@3IE	DW	00H
+?rx2_index@@3IE	DW	00H
+?tx4_index@@3IE	DW	00H
+?tx4_counter@@3IE	DW	00H
+?tx4_len@@3IE	DW	00H
+?rx4_index@@3IE	DW	00H
+_DATA      ENDS
+_BSS      SEGMENT
+	ORG	$+1440
+PUBLIC  ?com4_old_vector@@3P7AXXZE
+?com4_old_vector@@3P7AXXZE	DW 02H DUP (?)
+	ORG	$-1444
+PUBLIC  ?tx1_message@@3QIEI
+?tx1_message@@3QIEI	DW 028H DUP (?)
+PUBLIC  ?rx1_message@@3QIEI
+?rx1_message@@3QIEI	DW 0200H DUP (?)
+PUBLIC  ?tx2_message@@3QIEI
+?tx2_message@@3QIEI	DW 028H DUP (?)
+PUBLIC  ?rx2_message@@3QIEI
+?rx2_message@@3QIEI	DW 02cH DUP (?)
+PUBLIC  ?tx4_message@@3QIEI
+?tx4_message@@3QIEI	DW 028H DUP (?)
+PUBLIC  ?rx4_message@@3QIEI
+?rx4_message@@3QIEI	DW 028H DUP (?)
+PUBLIC  ?com1_old_vector@@3P7AXXZE
+?com1_old_vector@@3P7AXXZE	DW 02H DUP (?)
+PUBLIC  ?com2_old_vector@@3P7AXXZE
+?com2_old_vector@@3P7AXXZE	DW 02H DUP (?)
+_BSS      ENDS
+RS232_TEXT      SEGMENT
+	ASSUME	CS: RS232_TEXT
+	PUBLIC	?init_com1@@ZAXXZ	; init_com1
+?init_com1@@ZAXXZ	PROC FAR	; init_com1
+;|*** // rs323.cpp
+;|*** // serial port routines for the
+;|*** // autonomous obc
+;|***    
+;|*** #include <stdlib.h>
+;|*** #include <stdio.h>
+;|*** #include <dos.h>
+;|*** #include <conio.h>
+;|*** #include <string.h>
+;|*** #include <graph.h>
+;|*** #include "pc.h"
+;|*** #include "rs232.h"
+;|*** #include "dmmtest.h"
+;|*** #include "dmm32.h"
+;|*** 
+;|*** // adcp variables
+;|*** unsigned char tx1_message[80];
+;|*** unsigned tx1_index = 0;
+;|*** unsigned tx1_counter = 0;
+;|*** unsigned tx1_len = 0;
+;|*** unsigned rx1_index = 0;
+;|*** unsigned char rx1_message[1024];
+;|*** //unsigned char adcp_test[88];
+;|*** 
+;|*** // desert star variables
+;|*** unsigned char tx2_message[80];
+;|*** unsigned tx2_index = 0;
+;|*** unsigned tx2_counter = 0;
+;|*** unsigned tx2_len = 0;
+;|*** unsigned rx2_index = 0;
+;|*** unsigned char rx2_message[88];
+;|*** 
+;|*** // gps variables
+;|*** unsigned char tx4_message[80];
+;|*** unsigned tx4_index = 0;
+;|*** unsigned tx4_counter = 0;
+;|*** unsigned tx4_len = 0;
+;|*** unsigned rx4_index = 0;
+;|*** unsigned char rx4_message[80];
+;|*** 
+;|*** // global variables
+;|*** void (interrupt far * com1_old_vector)();
+;|*** void (interrupt far * com2_old_vector)();
+;|*** void (interrupt far * com4_old_vector)();
+;|*** 
+;|*** // global flags
+;|*** 
+;|*** 
+;|*** // external variables
+;|*** //extern unsigned char adcp_buffer[88];
+;|*** extern unsigned char adcp_buffer[213];
+;|*** extern unsigned      adcp_new_data;
+;|*** extern unsigned long adcp_data_frame;
+;|*** extern unsigned char ds_buffer[80];
+;|*** extern unsigned      ds_new_data;
+;|*** extern unsigned long ds_data_frame;
+;|*** extern unsigned char gps_buffer[80];
+;|*** extern unsigned      gps_new_data;
+;|*** extern unsigned long gps_data_frame;
+;|*** extern unsigned      com1_tx;
+;|*** extern unsigned      com2_tx;
+;|*** extern unsigned      com4_tx;
+;|*** extern unsigned long frame;
+;|*** 
+;|*** struct TIMER
+;|***   {
+;|***   unsigned long high;
+;|***   unsigned      low;
+;|***   };
+;|*** 
+;|*** extern TIMER sys_timer;
+;|*** extern TIMER adcp_time;
+;|*** extern TIMER ds_time;
+;|*** extern TIMER gps_time;
+;|*** 
+;|*** 
+;|*** void init_com1(void)
+;|***   {
+; Line 78
+	*** 000000	c8 00 00 00 		enter	0,0
+	*** 000004	57 			push	di
+	*** 000005	56 			push	si
+;|***   
+;|***   // for ADCP
+;|***   
+;|***   // disable cpu interrupts
+;|***   _disable();
+; Line 83
+	*** 000006	9a 00 00 00 00 		call	FAR PTR __disable
+;|***   
+;|***   // set vector for COM1, irq4
+;|***   com1_old_vector = _dos_getvect(4+8); // irq4
+; Line 86
+	*** 00000b	6a 0c 			push	12	;000cH
+	*** 00000d	9a 00 00 00 00 		call	FAR PTR __dos_getvect
+	*** 000012	83 c4 02 		add	sp,2
+	*** 000015	a3 00 00 		mov	WORD PTR ?com1_old_vector@@3P7AXXZE,ax	;com1_old_vector
+	*** 000018	89 16 02 00 		mov	WORD PTR ?com1_old_vector@@3P7AXXZE+2,dx	;com1_old_vector
+;|***   _dos_setvect(4+8, com1_isr);
+; Line 87
+	*** 00001c	68 00 00 		push	SEG ?com1_isr@@ZAXXZ	;com1_isr
+	*** 00001f	68 00 00 		push	OFFSET ?com1_isr@@ZAXXZ	;com1_isr
+	*** 000022	6a 0c 			push	12	;000cH
+	*** 000024	9a 00 00 00 00 		call	FAR PTR __dos_setvect
+	*** 000029	83 c4 06 		add	sp,6
+;|***      
+;|***   // initialize COM1 16550
+;|***   _outp( COM1_LCR, (DLAB1 | NO | STOP1 | EIGHT));
+; Line 90
+	*** 00002c	68 83 00 		push	131	;0083H
+	*** 00002f	68 fb 03 		push	1019	;03fbH
+	*** 000032	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000037	83 c4 04 		add	sp,4
+;|***   _outp( COM1_DLL, BR_9600);
+; Line 91
+	*** 00003a	6a 0c 			push	12	;000cH
+	*** 00003c	68 f8 03 		push	1016	;03f8H
+	*** 00003f	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000044	83 c4 04 		add	sp,4
+;|***   //_outp( COM1_DLL, BR_115200);
+;|***   //_outp( COM1_DLL, BR_57600);
+;|***   //_outp( COM1_DLL, BR_19200);
+;|***   _outp( COM1_DLM, 0);
+; Line 95
+	*** 000047	6a 00 			push	0
+	*** 000049	68 f9 03 		push	1017	;03f9H
+	*** 00004c	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000051	83 c4 04 		add	sp,4
+;|***   _outp( COM1_LCR, (DLAB0 | NO | STOP1 | EIGHT));
+; Line 96
+	*** 000054	6a 03 			push	3
+	*** 000056	68 fb 03 		push	1019	;03fbH
+	*** 000059	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 00005e	83 c4 04 		add	sp,4
+;|***   //_outp( COM1_FCR, 0xc1); // enable FIFOs to 14, reset FIFOs
+;|***   _outp( COM1_FCR, 0xc7); // enable FIFOs to 14, reset FIFOs
+; Line 98
+	*** 000061	68 c7 00 		push	199	;00c7H
+	*** 000064	68 fa 03 		push	1018	;03faH
+	*** 000067	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 00006c	83 c4 04 		add	sp,4
+;|***     
+;|***   // unmask all com1 uart interrupts
+;|***   //_outp( COM1_IER, 0x0f);  //jtm
+;|***   _outp( COM1_IER, 0x07);
+; Line 102
+	*** 00006f	6a 07 			push	7
+	*** 000071	68 f9 03 		push	1017	;03f9H
+	*** 000074	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000079	83 c4 04 		add	sp,4
+;|***   
+;|***   // clear garbage from the com1 iir
+;|***   while((_inp(COM1_IIR) & 0x01) != 1)
+; Line 105
+					$FC2017:
+	*** 00007c	68 fa 03 		push	1018	;03faH
+	*** 00007f	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000084	83 c4 02 		add	sp,2
+	*** 000087	24 01 			and	al,1
+	*** 000089	3c 01 			cmp	al,1
+	*** 00008b	75 03 			jne	$JCC139
+	*** 00008d	e9 24 00 		jmp	$FB2018
+					$JCC139:
+;|***     {
+; Line 106
+;|***     _inp(COM1_RX);
+; Line 107
+	*** 000090	68 f8 03 		push	1016	;03f8H
+	*** 000093	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000098	83 c4 02 		add	sp,2
+;|***     _inp(COM1_LSR);
+; Line 108
+	*** 00009b	68 fd 03 		push	1021	;03fdH
+	*** 00009e	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0000a3	83 c4 02 		add	sp,2
+;|***     _inp(COM1_MSR);
+; Line 109
+	*** 0000a6	68 fe 03 		push	1022	;03feH
+	*** 0000a9	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0000ae	83 c4 02 		add	sp,2
+;|***     }
+; Line 110
+	*** 0000b1	e9 c8 ff 		jmp	$FC2017
+					$FB2018:
+;|***   
+;|***   // enable com1 irq4 interrupts at the pic
+;|***   _outp(0x21, _inp(0x21) & 0xef);
+; Line 113
+	*** 0000b4	6a 21 			push	33	;0021H
+	*** 0000b6	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0000bb	83 c4 02 		add	sp,2
+	*** 0000be	25 ef 00 		and	ax,239	;00efH
+	*** 0000c1	50 			push	ax
+	*** 0000c2	6a 21 			push	33	;0021H
+	*** 0000c4	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 0000c9	83 c4 04 		add	sp,4
+;|*** 
+;|***   // turn on the com1 mcr gate (out2)
+;|***   _outp( COM1_MCR, _inp(COM1_MCR) | 0x08); 
+; Line 116
+	*** 0000cc	68 fc 03 		push	1020	;03fcH
+	*** 0000cf	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0000d4	83 c4 02 		add	sp,2
+	*** 0000d7	0d 08 00 		or	ax,8
+	*** 0000da	50 			push	ax
+	*** 0000db	68 fc 03 		push	1020	;03fcH
+	*** 0000de	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 0000e3	83 c4 04 		add	sp,4
+;|***   
+;|***   // enable cpu interrupts          
+;|***   _enable();
+; Line 119
+	*** 0000e6	9a 00 00 00 00 		call	FAR PTR __enable
+;|***   // done 
+;|***   } // end init_com1()
+; Line 121
+	*** 0000eb	e9 00 00 		jmp	$EX2015
+					$EX2015:
+	*** 0000ee	5e 			pop	si
+	*** 0000ef	5f 			pop	di
+	*** 0000f0	c9 			leave	
+	*** 0000f1	cb 			ret	
+
+?init_com1@@ZAXXZ	ENDP
+	PUBLIC	?init_com2@@ZAXXZ	; init_com2
+?init_com2@@ZAXXZ	PROC FAR	; init_com2
+;|*** 
+;|*** 
+;|*** 
+;|*** void init_com2(void)
+;|***   {
+; Line 126
+	*** 0000f2	c8 00 00 00 		enter	0,0
+	*** 0000f6	57 			push	di
+	*** 0000f7	56 			push	si
+;|***   
+;|***   // for acoustic modem
+;|***   
+;|***   // disable cpu interrupts
+;|***   _disable();
+; Line 131
+	*** 0000f8	9a 00 00 00 00 		call	FAR PTR __disable
+;|***   
+;|***   // set vector for COM2, irq3
+;|***   com2_old_vector = _dos_getvect(3+8);
+; Line 134
+	*** 0000fd	6a 0b 			push	11	;000bH
+	*** 0000ff	9a 00 00 00 00 		call	FAR PTR __dos_getvect
+	*** 000104	83 c4 02 		add	sp,2
+	*** 000107	a3 00 00 		mov	WORD PTR ?com2_old_vector@@3P7AXXZE,ax	;com2_old_vector
+	*** 00010a	89 16 02 00 		mov	WORD PTR ?com2_old_vector@@3P7AXXZE+2,dx	;com2_old_vector
+;|***   _dos_setvect(3+8, com2_isr);
+; Line 135
+	*** 00010e	68 00 00 		push	SEG ?com2_isr@@ZAXXZ	;com2_isr
+	*** 000111	68 00 00 		push	OFFSET ?com2_isr@@ZAXXZ	;com2_isr
+	*** 000114	6a 0b 			push	11	;000bH
+	*** 000116	9a 00 00 00 00 		call	FAR PTR __dos_setvect
+	*** 00011b	83 c4 06 		add	sp,6
+;|***      
+;|***   // initialize COM2 16550
+;|***   _outp( COM2_LCR, (DLAB1 | NO | STOP1 | EIGHT));
+; Line 138
+	*** 00011e	68 83 00 		push	131	;0083H
+	*** 000121	68 fb 02 		push	763	;02fbH
+	*** 000124	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000129	83 c4 04 		add	sp,4
+;|***   _outp( COM2_DLL, BR_9600);  // for acoustic modem
+; Line 139
+	*** 00012c	6a 0c 			push	12	;000cH
+	*** 00012e	68 f8 02 		push	760	;02f8H
+	*** 000131	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000136	83 c4 04 		add	sp,4
+;|***   //_outp( COM2_DLL, BR_4800);  // for desert star
+;|***   //_outp( COM2_DLL, BR_57600);
+;|***   _outp( COM2_DLM, 0);
+; Line 142
+	*** 000139	6a 00 			push	0
+	*** 00013b	68 f9 02 		push	761	;02f9H
+	*** 00013e	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000143	83 c4 04 		add	sp,4
+;|***   _outp( COM2_LCR, (DLAB0 | NO | STOP1 | EIGHT));
+; Line 143
+	*** 000146	6a 03 			push	3
+	*** 000148	68 fb 02 		push	763	;02fbH
+	*** 00014b	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000150	83 c4 04 		add	sp,4
+;|***   _outp( COM2_FCR, 0xc1); // enable FIFOs to 14, reset FIFOs
+; Line 144
+	*** 000153	68 c1 00 		push	193	;00c1H
+	*** 000156	68 fa 02 		push	762	;02faH
+	*** 000159	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 00015e	83 c4 04 		add	sp,4
+;|***     
+;|***   // unmask all com1 uart interrupts
+;|***   _outp( COM2_IER, 0x0f);
+; Line 147
+	*** 000161	6a 0f 			push	15	;000fH
+	*** 000163	68 f9 02 		push	761	;02f9H
+	*** 000166	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 00016b	83 c4 04 		add	sp,4
+;|***   
+;|***   // clear garbage from the com1 iir
+;|***   while((_inp(COM2_IIR) & 0x01) != 1)
+; Line 150
+					$FC2022:
+	*** 00016e	68 fa 02 		push	762	;02faH
+	*** 000171	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000176	83 c4 02 		add	sp,2
+	*** 000179	24 01 			and	al,1
+	*** 00017b	3c 01 			cmp	al,1
+	*** 00017d	75 03 			jne	$JCC381
+	*** 00017f	e9 24 00 		jmp	$FB2023
+					$JCC381:
+;|***     {
+; Line 151
+;|***     _inp(COM2_RX);
+; Line 152
+	*** 000182	68 f8 02 		push	760	;02f8H
+	*** 000185	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 00018a	83 c4 02 		add	sp,2
+;|***     _inp(COM2_LSR);
+; Line 153
+	*** 00018d	68 fd 02 		push	765	;02fdH
+	*** 000190	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000195	83 c4 02 		add	sp,2
+;|***     _inp(COM2_MSR);
+; Line 154
+	*** 000198	68 fe 02 		push	766	;02feH
+	*** 00019b	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0001a0	83 c4 02 		add	sp,2
+;|***     }
+; Line 155
+	*** 0001a3	e9 c8 ff 		jmp	$FC2022
+					$FB2023:
+;|***   
+;|***   // enable com2 irq3 interrupts at the pic
+;|***   _outp(0x21, _inp(0x21) & 0xf7);
+; Line 158
+	*** 0001a6	6a 21 			push	33	;0021H
+	*** 0001a8	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0001ad	83 c4 02 		add	sp,2
+	*** 0001b0	25 f7 00 		and	ax,247	;00f7H
+	*** 0001b3	50 			push	ax
+	*** 0001b4	6a 21 			push	33	;0021H
+	*** 0001b6	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 0001bb	83 c4 04 		add	sp,4
+;|*** 
+;|***   // turn on the com2 mcr gate (out2)
+;|***   _outp( COM2_MCR, _inp(COM2_MCR) | 0x08); 
+; Line 161
+	*** 0001be	68 fc 02 		push	764	;02fcH
+	*** 0001c1	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0001c6	83 c4 02 		add	sp,2
+	*** 0001c9	0d 08 00 		or	ax,8
+	*** 0001cc	50 			push	ax
+	*** 0001cd	68 fc 02 		push	764	;02fcH
+	*** 0001d0	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 0001d5	83 c4 04 		add	sp,4
+;|***   
+;|***   // enable cpu interrupts          
+;|***   _enable();
+; Line 164
+	*** 0001d8	9a 00 00 00 00 		call	FAR PTR __enable
+;|***   // done 
+;|***   } // end init_com2()
+; Line 166
+	*** 0001dd	e9 00 00 		jmp	$EX2020
+					$EX2020:
+	*** 0001e0	5e 			pop	si
+	*** 0001e1	5f 			pop	di
+	*** 0001e2	c9 			leave	
+	*** 0001e3	cb 			ret	
+
+?init_com2@@ZAXXZ	ENDP
+	PUBLIC	?init_com4@@ZAXXZ	; init_com4
+?init_com4@@ZAXXZ	PROC FAR	; init_com4
+;|*** 
+;|*** void init_com4(void)
+;|***   {
+; Line 169
+	*** 0001e4	c8 00 00 00 		enter	0,0
+	*** 0001e8	57 			push	di
+	*** 0001e9	56 			push	si
+;|***   
+;|***   // receive gps
+;|*** 
+;|***   // disable cpu interrupts
+;|***   _disable();
+; Line 174
+	*** 0001ea	9a 00 00 00 00 		call	FAR PTR __disable
+;|***   
+;|***   // set vector for COM4, irq9
+;|***   com4_old_vector = _dos_getvect(9+0x70-8);
+; Line 177
+	*** 0001ef	6a 71 			push	113	;0071H
+	*** 0001f1	9a 00 00 00 00 		call	FAR PTR __dos_getvect
+	*** 0001f6	83 c4 02 		add	sp,2
+	*** 0001f9	a3 00 00 		mov	WORD PTR ?com4_old_vector@@3P7AXXZE,ax	;com4_old_vector
+	*** 0001fc	89 16 02 00 		mov	WORD PTR ?com4_old_vector@@3P7AXXZE+2,dx	;com4_old_vector
+;|***   _dos_setvect(9+0x70-8, com4_isr);
+; Line 178
+	*** 000200	68 00 00 		push	SEG ?com4_isr@@ZAXXZ	;com4_isr
+	*** 000203	68 00 00 		push	OFFSET ?com4_isr@@ZAXXZ	;com4_isr
+	*** 000206	6a 71 			push	113	;0071H
+	*** 000208	9a 00 00 00 00 		call	FAR PTR __dos_setvect
+	*** 00020d	83 c4 06 		add	sp,6
+;|***      
+;|***   // initialize COM4 16550
+;|***   _outp( COM4_LCR, (DLAB1 | NO | STOP1 | EIGHT));
+; Line 181
+	*** 000210	68 83 00 		push	131	;0083H
+	*** 000213	68 eb 02 		push	747	;02ebH
+	*** 000216	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 00021b	83 c4 04 		add	sp,4
+;|***   _outp( COM4_DLL, BR_9600);  // for gps
+; Line 182
+	*** 00021e	6a 0c 			push	12	;000cH
+	*** 000220	68 e8 02 		push	744	;02e8H
+	*** 000223	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000228	83 c4 04 		add	sp,4
+;|***   //_outp( COM4_DLL, BR_4800);  //
+;|***   //_outp( COM4_DLL, BR_57600);
+;|***   _outp( COM4_DLM, 0);
+; Line 185
+	*** 00022b	6a 00 			push	0
+	*** 00022d	68 e9 02 		push	745	;02e9H
+	*** 000230	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000235	83 c4 04 		add	sp,4
+;|***   _outp( COM4_LCR, (DLAB0 | NO | STOP1 | EIGHT));
+; Line 186
+	*** 000238	6a 03 			push	3
+	*** 00023a	68 eb 02 		push	747	;02ebH
+	*** 00023d	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000242	83 c4 04 		add	sp,4
+;|***   _outp( COM4_FCR, 0xc1); // enable FIFOs to 14, reset FIFOs
+; Line 187
+	*** 000245	68 c1 00 		push	193	;00c1H
+	*** 000248	68 ea 02 		push	746	;02eaH
+	*** 00024b	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000250	83 c4 04 		add	sp,4
+;|***     
+;|***   // unmask all com4 uart interrupts
+;|***   _outp( COM4_IER, 0x0f);
+; Line 190
+	*** 000253	6a 0f 			push	15	;000fH
+	*** 000255	68 e9 02 		push	745	;02e9H
+	*** 000258	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 00025d	83 c4 04 		add	sp,4
+;|***   
+;|***   // clear garbage from the com4 iir
+;|***   while((_inp(COM4_IIR) & 0x01) != 1)
+; Line 193
+					$FC2027:
+	*** 000260	68 ea 02 		push	746	;02eaH
+	*** 000263	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000268	83 c4 02 		add	sp,2
+	*** 00026b	24 01 			and	al,1
+	*** 00026d	3c 01 			cmp	al,1
+	*** 00026f	75 03 			jne	$JCC623
+	*** 000271	e9 24 00 		jmp	$FB2028
+					$JCC623:
+;|***     {
+; Line 194
+;|***     _inp(COM4_RX);
+; Line 195
+	*** 000274	68 e8 02 		push	744	;02e8H
+	*** 000277	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 00027c	83 c4 02 		add	sp,2
+;|***     _inp(COM4_LSR);
+; Line 196
+	*** 00027f	68 ed 02 		push	749	;02edH
+	*** 000282	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000287	83 c4 02 		add	sp,2
+;|***     _inp(COM4_MSR);
+; Line 197
+	*** 00028a	68 ee 02 		push	750	;02eeH
+	*** 00028d	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000292	83 c4 02 		add	sp,2
+;|***     }
+; Line 198
+	*** 000295	e9 c8 ff 		jmp	$FC2027
+					$FB2028:
+;|***   
+;|***   // enable com4 irq9 interrupts at the pic
+;|***   _outp(0xa1, _inp(0xa1) & 0xfd);
+; Line 201
+	*** 000298	68 a1 00 		push	161	;00a1H
+	*** 00029b	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0002a0	83 c4 02 		add	sp,2
+	*** 0002a3	25 fd 00 		and	ax,253	;00fdH
+	*** 0002a6	50 			push	ax
+	*** 0002a7	68 a1 00 		push	161	;00a1H
+	*** 0002aa	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 0002af	83 c4 04 		add	sp,4
+;|*** 
+;|***   // turn on the com4 mcr gate (out2)
+;|***   _outp( COM4_MCR, _inp(COM4_MCR) | 0x08); 
+; Line 204
+	*** 0002b2	68 ec 02 		push	748	;02ecH
+	*** 0002b5	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0002ba	83 c4 02 		add	sp,2
+	*** 0002bd	0d 08 00 		or	ax,8
+	*** 0002c0	50 			push	ax
+	*** 0002c1	68 ec 02 		push	748	;02ecH
+	*** 0002c4	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 0002c9	83 c4 04 		add	sp,4
+;|***   
+;|***   // enable cpu interrupts          
+;|***   _enable();
+; Line 207
+	*** 0002cc	9a 00 00 00 00 		call	FAR PTR __enable
+;|***   // done 
+;|***   } // end init_com4()
+; Line 209
+	*** 0002d1	e9 00 00 		jmp	$EX2025
+					$EX2025:
+	*** 0002d4	5e 			pop	si
+	*** 0002d5	5f 			pop	di
+	*** 0002d6	c9 			leave	
+	*** 0002d7	cb 			ret	
+
+?init_com4@@ZAXXZ	ENDP
+	PUBLIC	?com1_isr@@ZAXXZ	; com1_isr
+?com1_isr@@ZAXXZ	PROC FAR	; com1_isr
+;|*** 
+;|*** 
+;|*** 
+;|*** void interrupt far com1_isr(void)
+;|***   {
+; Line 214
+	*** 0002d8	60 			pusha
+	*** 0002d9	1e 			push	ds
+	*** 0002da	06 			push	es
+	*** 0002db	8b ec 			mov	bp,sp
+	*** 0002dd	81 ec 06 00 		sub	sp,6
+	*** 0002e1	1e 			push	ds
+	*** 0002e2	b8 00 00 		mov	ax,DGROUP
+	*** 0002e5	8e d8 			mov	ds,ax
+	ASSUME DS: DGROUP
+	*** 0002e7	fc 			cld	
+;	intr = -2
+;	i = -4
+;|***   // performs rs232 functions on com1 / ADCP
+;|***   
+;|***   unsigned intr;
+;|***   unsigned i;
+;|***   //unsigned lsb;
+;|***   //unsigned msb;
+;|***     
+;|***   _enable();
+; Line 222
+	*** 0002e8	9a 00 00 00 00 		call	FAR PTR __enable
+;|***     
+;|***   // disable com1 uart interrupts      
+;|***   _outp(COM1_MCR, _inp(COM1_MCR) & 0xf7);
+; Line 225
+	*** 0002ed	68 fc 03 		push	1020	;03fcH
+	*** 0002f0	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0002f5	83 c4 02 		add	sp,2
+	*** 0002f8	25 f7 00 		and	ax,247	;00f7H
+	*** 0002fb	50 			push	ax
+	*** 0002fc	68 fc 03 		push	1020	;03fcH
+	*** 0002ff	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000304	83 c4 04 		add	sp,4
+;|***   
+;|***   start_com1_isr:
+; Line 227
+					$start_com1_isr2033:
+;|***   
+;|***   // check contents of COM1_IIR  
+;|***   intr = _inp(COM1_IIR);
+; Line 230
+	*** 000307	68 fa 03 		push	1018	;03faH
+	*** 00030a	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 00030f	83 c4 02 		add	sp,2
+	*** 000312	89 46 fe 		mov	WORD PTR [bp-2],ax	;intr
+;|***   intr = intr & 0x0f; // mask off b7 to b4
+; Line 231
+	*** 000315	83 66 fe 0f 		and	WORD PTR [bp-2],15	;000fH	;intr
+;|***   
+;|***   if((intr & 0x01) == 0) // if a valid com1 interrupt is pending
+; Line 233
+	*** 000319	f6 46 fe 01 		test	BYTE PTR [bp-2],1	;intr
+	*** 00031d	74 03 			je	$JCC797
+	*** 00031f	e9 b6 01 		jmp	$I2034
+					$JCC797:
+;|***     {   
+; Line 234
+;|***     // shift IIR value right one bit and test to see which routine is required
+;|***     intr = intr >> 1;
+; Line 236
+	*** 000322	d1 6e fe 		shr	WORD PTR [bp-2],1	;intr
+;|***   
+;|***     // do rs232 input interrupt routine
+;|***     if(intr == 0)
+; Line 239
+	*** 000325	83 7e fe 00 		cmp	WORD PTR [bp-2],0	;intr
+	*** 000329	74 03 			je	$JCC809
+	*** 00032b	e9 11 00 		jmp	$I2035
+					$JCC809:
+;|***       {
+; Line 240
+;	msr_char = -6
+;|***       // read the rs232 status register
+;|***       unsigned msr_char = _inp(COM1_MSR);
+; Line 242
+	*** 00032e	68 fe 03 		push	1022	;03feH
+	*** 000331	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000336	83 c4 02 		add	sp,2
+	*** 000339	89 46 fa 		mov	WORD PTR [bp-6],ax	;msr_char
+;|***       goto start_com1_isr;
+; Line 243
+	*** 00033c	e9 c8 ff 		jmp	$start_com1_isr2033
+;|***       }
+; Line 244
+;|***      
+;|***     // do tx buffer empty interrupt routine
+;|***     if(intr == 1)
+; Line 247
+					$I2035:
+	*** 00033f	83 7e fe 01 		cmp	WORD PTR [bp-2],1	;intr
+	*** 000343	74 03 			je	$JCC835
+	*** 000345	e9 8b 00 		jmp	$I2037
+					$JCC835:
+;|***       {
+; Line 248
+;|***       // either write to tx FIFO or read int id register again
+;|***       
+;|***       // the idea here is to continue a tx once it has started,
+;|***       // not to start one in the first place
+;|***       
+;|***       // the tx is started by the main() program writing the first
+;|***       // char to the tx buffer, which will send the char out
+;|***       
+;|***       // once the tx fifo has drained, the tbe bit will be
+;|***       // set in the iir, indicating that the tx buffer is ready for more
+;|***       
+;|***       if(com1_tx==0)  // no message to tx
+; Line 260
+	*** 000348	83 3e 00 00 00 		cmp	WORD PTR ?com1_tx@@3IE,0	;com1_tx
+	*** 00034d	74 03 			je	$JCC845
+	*** 00034f	e9 0e 00 		jmp	$I2038
+					$JCC845:
+;|***         {
+; Line 261
+;|***         _inp(COM1_IIR);
+; Line 262
+	*** 000352	68 fa 03 		push	1018	;03faH
+	*** 000355	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 00035a	83 c4 02 		add	sp,2
+;|***         goto start_com1_isr;
+; Line 263
+	*** 00035d	e9 a7 ff 		jmp	$start_com1_isr2033
+;|***         }
+; Line 264
+;|***       if(com1_tx==1)  // tx remaining message
+; Line 265
+					$I2038:
+	*** 000360	83 3e 00 00 01 		cmp	WORD PTR ?com1_tx@@3IE,1	;com1_tx
+	*** 000365	74 03 			je	$JCC869
+	*** 000367	e9 66 00 		jmp	$I2039
+					$JCC869:
+;|***         {
+; Line 266
+;|***         for(i=0; i<16;i++) // load 16 characters into the tx fifo
+; Line 267
+	*** 00036a	c7 46 fc 00 00 		mov	WORD PTR [bp-4],0	;i
+	*** 00036f	e9 03 00 		jmp	$F2040
+					$FC2041:
+	*** 000372	ff 46 fc 		inc	WORD PTR [bp-4]	;i
+					$F2040:
+	*** 000375	83 7e fc 10 		cmp	WORD PTR [bp-4],16	;0010H	;i
+	*** 000379	72 03 			jb	$JCC889
+	*** 00037b	e9 52 00 		jmp	$FB2042
+					$JCC889:
+;|***           {
+; Line 268
+;|***           if(com1_tx==0) break;
+; Line 269
+	*** 00037e	83 3e 00 00 00 		cmp	WORD PTR ?com1_tx@@3IE,0	;com1_tx
+	*** 000383	74 03 			je	$JCC899
+	*** 000385	e9 06 00 		jmp	$I2043
+					$JCC899:
+	*** 000388	e9 45 00 		jmp	$FB2042
+;|***           else  // only if more message needs to be sent
+; Line 270
+	*** 00038b	e9 3f 00 		jmp	$I2044
+					$I2043:
+;|***             {
+; Line 271
+;|***             _outp(COM1_TX, tx1_message[tx1_index]); // write the next character
+; Line 272
+	*** 00038e	8b 1e 00 00 		mov	bx,WORD PTR ?tx1_index@@3IE	;tx1_index
+	*** 000392	8a 87 00 00 		mov	al,BYTE PTR ?tx1_message@@3QIEI[bx]	;tx1_message
+	*** 000396	2a e4 			sub	ah,ah
+	*** 000398	50 			push	ax
+	*** 000399	68 f8 03 		push	1016	;03f8H
+	*** 00039c	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 0003a1	83 c4 04 		add	sp,4
+;|***             tx1_index++;
+; Line 273
+	*** 0003a4	ff 06 00 00 		inc	WORD PTR ?tx1_index@@3IE	;tx1_index
+;|***             tx1_counter++;
+; Line 274
+	*** 0003a8	ff 06 00 00 		inc	WORD PTR ?tx1_counter@@3IE	;tx1_counter
+;|***             if(tx1_index >= tx1_len)  // entire message has been sent
+; Line 275
+	*** 0003ac	a1 00 00 		mov	ax,WORD PTR ?tx1_index@@3IE	;tx1_index
+	*** 0003af	39 06 00 00 		cmp	WORD PTR ?tx1_len@@3IE,ax	;tx1_len
+	*** 0003b3	76 03 			jbe	$JCC947
+	*** 0003b5	e9 15 00 		jmp	$I2045
+					$JCC947:
+;|***               {
+; Line 276
+;|***               tx1_index = 0;
+; Line 277
+	*** 0003b8	c7 06 00 00 00 00 	mov	WORD PTR ?tx1_index@@3IE,0	;tx1_index
+;|***               com1_tx = 0;
+; Line 278
+	*** 0003be	c7 06 00 00 00 00 	mov	WORD PTR ?com1_tx@@3IE,0	;com1_tx
+;|***               tx1_len = 0;
+; Line 279
+	*** 0003c4	c7 06 00 00 00 00 	mov	WORD PTR ?tx1_len@@3IE,0	;tx1_len
+;|***               goto start_com1_isr;  
+; Line 280
+	*** 0003ca	e9 3a ff 		jmp	$start_com1_isr2033
+;|***               }
+; Line 281
+;|***             }
+; Line 282
+					$I2045:
+					$I2044:
+;|***           }
+; Line 283
+	*** 0003cd	e9 a2 ff 		jmp	$FC2041
+					$FB2042:
+;|***         }
+; Line 284
+;|***       goto start_com1_isr;    
+; Line 285
+					$I2039:
+	*** 0003d0	e9 34 ff 		jmp	$start_com1_isr2033
+;|***       }
+; Line 286
+;|***       
+;|***     // rx data received interrupt routine (>= 14 bytes in receive buffer)
+;|***     if(intr == 2)
+; Line 289
+					$I2037:
+	*** 0003d3	83 7e fe 02 		cmp	WORD PTR [bp-2],2	;intr
+	*** 0003d7	74 03 			je	$JCC983
+	*** 0003d9	e9 42 00 		jmp	$I2046
+					$JCC983:
+;|***       {
+; Line 290
+;|***       // read rx register
+;|***             
+;|***       // read 12 bytes from the rx register (still at least 2 bytes left)
+;|***       for(i = 0; i < 12; i++)
+; Line 294
+	*** 0003dc	c7 46 fc 00 00 		mov	WORD PTR [bp-4],0	;i
+	*** 0003e1	e9 03 00 		jmp	$F2047
+					$FC2048:
+	*** 0003e4	ff 46 fc 		inc	WORD PTR [bp-4]	;i
+					$F2047:
+	*** 0003e7	83 7e fc 0c 		cmp	WORD PTR [bp-4],12	;000cH	;i
+	*** 0003eb	72 03 			jb	$JCC1003
+	*** 0003ed	e9 2b 00 		jmp	$FB2049
+					$JCC1003:
+;|***         {
+; Line 295
+;|***         rx1_message[rx1_index] = _inp(COM1_RX);
+; Line 296
+	*** 0003f0	68 f8 03 		push	1016	;03f8H
+	*** 0003f3	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0003f8	83 c4 02 		add	sp,2
+	*** 0003fb	8b 1e 00 00 		mov	bx,WORD PTR ?rx1_index@@3IE	;rx1_index
+	*** 0003ff	88 87 00 00 		mov	BYTE PTR ?rx1_message@@3QIEI[bx],al	;rx1_message
+;|***         rx1_index++;
+; Line 297
+	*** 000403	ff 06 00 00 		inc	WORD PTR ?rx1_index@@3IE	;rx1_index
+;|***         if(rx1_index >= sizeof(rx1_message))
+; Line 298
+	*** 000407	81 3e 00 00 00 04 	cmp	WORD PTR ?rx1_index@@3IE,1024	;0400H	;rx1_index
+	*** 00040d	73 03 			jae	$JCC1037
+	*** 00040f	e9 06 00 		jmp	$I2050
+					$JCC1037:
+;|***           rx1_index = 0;
+; Line 299
+	*** 000412	c7 06 00 00 00 00 	mov	WORD PTR ?rx1_index@@3IE,0	;rx1_index
+;|***         }
+; Line 300
+					$I2050:
+	*** 000418	e9 c9 ff 		jmp	$FC2048
+					$FB2049:
+;|***         
+;|***       goto start_com1_isr;
+; Line 302
+	*** 00041b	e9 e9 fe 		jmp	$start_com1_isr2033
+;|***       }
+; Line 303
+;|***     
+;|***     // else do serialization error/break routine  
+;|***     if(intr == 3)
+; Line 306
+					$I2046:
+	*** 00041e	83 7e fe 03 		cmp	WORD PTR [bp-2],3	;intr
+	*** 000422	74 03 			je	$JCC1058
+	*** 000424	e9 11 00 		jmp	$I2051
+					$JCC1058:
+;|***       {
+; Line 307
+;	lsr_char = -6
+;|***       // read serialization/line status register
+;|***       unsigned lsr_char = _inp(COM1_LSR);
+; Line 309
+	*** 000427	68 fd 03 		push	1021	;03fdH
+	*** 00042a	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 00042f	83 c4 02 		add	sp,2
+	*** 000432	89 46 fa 		mov	WORD PTR [bp-6],ax	;msr_char
+;|***       goto start_com1_isr;
+; Line 310
+	*** 000435	e9 cf fe 		jmp	$start_com1_isr2033
+;|***       }
+; Line 311
+;|***     
+;|***     // do rx character timeout routine: message end
+;|***     if(intr == 6)
+; Line 314
+					$I2051:
+	*** 000438	83 7e fe 06 		cmp	WORD PTR [bp-2],6	;intr
+	*** 00043c	74 03 			je	$JCC1084
+	*** 00043e	e9 94 00 		jmp	$I2053
+					$JCC1084:
+;|***       {
+; Line 315
+;|***       // drain rx fifo
+;|***       while((_inp(COM1_LSR) & 0x01) == 1)
+; Line 317
+					$FC2055:
+	*** 000441	68 fd 03 		push	1021	;03fdH
+	*** 000444	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000449	83 c4 02 		add	sp,2
+	*** 00044c	24 01 			and	al,1
+	*** 00044e	3c 01 			cmp	al,1
+	*** 000450	74 03 			je	$JCC1104
+	*** 000452	e9 2b 00 		jmp	$FB2056
+					$JCC1104:
+;|***         {
+; Line 318
+;|***         rx1_message[rx1_index] = _inp(COM1_RX);
+; Line 319
+	*** 000455	68 f8 03 		push	1016	;03f8H
+	*** 000458	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 00045d	83 c4 02 		add	sp,2
+	*** 000460	8b 1e 00 00 		mov	bx,WORD PTR ?rx1_index@@3IE	;rx1_index
+	*** 000464	88 87 00 00 		mov	BYTE PTR ?rx1_message@@3QIEI[bx],al	;rx1_message
+;|***         rx1_index++;
+; Line 320
+	*** 000468	ff 06 00 00 		inc	WORD PTR ?rx1_index@@3IE	;rx1_index
+;|***         if(rx1_index >= sizeof(rx1_message)) rx1_index = 0;
+; Line 321
+	*** 00046c	81 3e 00 00 00 04 	cmp	WORD PTR ?rx1_index@@3IE,1024	;0400H	;rx1_index
+	*** 000472	73 03 			jae	$JCC1138
+	*** 000474	e9 06 00 		jmp	$I2057
+					$JCC1138:
+	*** 000477	c7 06 00 00 00 00 	mov	WORD PTR ?rx1_index@@3IE,0	;rx1_index
+;|***         }
+; Line 322
+					$I2057:
+	*** 00047d	e9 c1 ff 		jmp	$FC2055
+					$FB2056:
+;|***       
+;|***       //if(rx1_index >= 88) // complete frame received
+;|***       if(rx1_index >= 213) // complete frame received
+; Line 325
+	*** 000480	81 3e 00 00 d5 00 	cmp	WORD PTR ?rx1_index@@3IE,213	;00d5H	;rx1_index
+	*** 000486	73 03 			jae	$JCC1158
+	*** 000488	e9 41 00 		jmp	$I2058
+					$JCC1158:
+;|***         {
+; Line 326
+;|***         // timestamp the adcp message
+;|***         _disable();
+; Line 328
+	*** 00048b	9a 00 00 00 00 		call	FAR PTR __disable
+;|***         time_stamp(&adcp_time);
+; Line 329
+	*** 000490	68 00 00 		push	SEG ?adcp_time@@3UTIMER@@E	;adcp_time
+	*** 000493	68 00 00 		push	OFFSET ?adcp_time@@3UTIMER@@E	;adcp_time
+	*** 000496	9a 00 00 00 00 		call	FAR PTR ?time_stamp@@ZAXPEUTIMER@@@Z	; time_stamp
+	*** 00049b	83 c4 04 		add	sp,4
+;|***         _enable();
+; Line 330
+	*** 00049e	9a 00 00 00 00 		call	FAR PTR __enable
+;|*** 
+;|***         //memcpy(adcp_buffer, rx1_message, 88);
+;|***         memcpy(adcp_buffer, rx1_message, 213);
+; Line 333
+	*** 0004a3	68 d5 00 		push	213	;00d5H
+	*** 0004a6	1e 			push	ds
+	*** 0004a7	68 00 00 		push	OFFSET DGROUP:?rx1_message@@3QIEI	;rx1_message
+	*** 0004aa	68 00 00 		push	SEG ?adcp_buffer@@3QIEI	;adcp_buffer
+	*** 0004ad	68 00 00 		push	OFFSET ?adcp_buffer@@3QIEI	;adcp_buffer
+	*** 0004b0	9a 00 00 00 00 		call	FAR PTR _memcpy
+	*** 0004b5	83 c4 0a 		add	sp,10	;000aH
+;|***         //rx1_index = 0;
+;|***         adcp_new_data = 1;
+; Line 335
+	*** 0004b8	c7 06 00 00 01 00 	mov	WORD PTR ?adcp_new_data@@3IE,1	;adcp_new_data
+;|***         adcp_data_frame = frame;
+; Line 336
+	*** 0004be	a1 00 00 		mov	ax,WORD PTR ?frame@@3KE	;frame
+	*** 0004c1	8b 16 02 00 		mov	dx,WORD PTR ?frame@@3KE+2	;frame
+	*** 0004c5	a3 00 00 		mov	WORD PTR ?adcp_data_frame@@3KE,ax	;adcp_data_frame
+	*** 0004c8	89 16 02 00 		mov	WORD PTR ?adcp_data_frame@@3KE+2,dx	;adcp_data_frame
+;|***         }
+; Line 337
+;|***       rx1_index = 0;
+; Line 338
+					$I2058:
+	*** 0004cc	c7 06 00 00 00 00 	mov	WORD PTR ?rx1_index@@3IE,0	;rx1_index
+;|***       goto start_com1_isr;      
+; Line 339
+	*** 0004d2	e9 32 fe 		jmp	$start_com1_isr2033
+;|***       } // end rx character timeout routine
+; Line 340
+;|***         
+;|***     goto start_com1_isr;
+; Line 342
+					$I2053:
+	*** 0004d5	e9 2f fe 		jmp	$start_com1_isr2033
+;|***     }  // end if((intr & 0x01) == 0)
+; Line 343
+;|***   
+;|***   //_disable();  
+;|***   // enable com1 uart tx interrupts    
+;|***   _outp(COM1_MCR, _inp(COM1_MCR) | 0x08);
+; Line 347
+					$I2034:
+	*** 0004d8	68 fc 03 		push	1020	;03fcH
+	*** 0004db	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0004e0	83 c4 02 		add	sp,2
+	*** 0004e3	0d 08 00 		or	ax,8
+	*** 0004e6	50 			push	ax
+	*** 0004e7	68 fc 03 		push	1020	;03fcH
+	*** 0004ea	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 0004ef	83 c4 04 		add	sp,4
+;|***   _outp(0x20, 0x20);  // non-specific return from interrupt
+; Line 348
+	*** 0004f2	6a 20 			push	32	;0020H
+	*** 0004f4	6a 20 			push	32	;0020H
+	*** 0004f6	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 0004fb	83 c4 04 		add	sp,4
+;|***   _disable();
+; Line 349
+	*** 0004fe	9a 00 00 00 00 		call	FAR PTR __disable
+;|***   
+;|***   }  // end com1_isr()
+; Line 351
+	*** 000503	e9 00 00 		jmp	$EX2030
+					$EX2030:
+	*** 000506	8b e5 			mov	sp,bp
+	*** 000508	07 			pop	es
+	*** 000509	1f 			pop	ds
+	ASSUME DS: DGROUP
+	*** 00050a	61 			popa
+	*** 00050b	cf 			iret	
+
+?com1_isr@@ZAXXZ	ENDP
+	PUBLIC	?com2_isr@@ZAXXZ	; com2_isr
+?com2_isr@@ZAXXZ	PROC FAR	; com2_isr
+;|*** 
+;|*** 
+;|*** 
+;|*** void interrupt far com2_isr(void)
+;|***   {
+; Line 356
+	*** 00050c	60 			pusha
+	*** 00050d	1e 			push	ds
+	*** 00050e	06 			push	es
+	*** 00050f	8b ec 			mov	bp,sp
+	*** 000511	81 ec 06 00 		sub	sp,6
+	*** 000515	1e 			push	ds
+	*** 000516	b8 00 00 		mov	ax,DGROUP
+	*** 000519	8e d8 			mov	ds,ax
+	ASSUME DS: DGROUP
+	*** 00051b	fc 			cld	
+;	intr = -2
+;	i = -4
+;|***   // performs rs232 functions on com2
+;|***   unsigned intr;
+;|***   unsigned i;
+;|***     
+;|***   _enable();
+; Line 361
+	*** 00051c	9a 00 00 00 00 		call	FAR PTR __enable
+;|***     
+;|***   // disable com2 uart interrupts      
+;|***   _outp(COM2_MCR, _inp(COM2_MCR) & 0xf7);
+; Line 364
+	*** 000521	68 fc 02 		push	764	;02fcH
+	*** 000524	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000529	83 c4 02 		add	sp,2
+	*** 00052c	25 f7 00 		and	ax,247	;00f7H
+	*** 00052f	50 			push	ax
+	*** 000530	68 fc 02 		push	764	;02fcH
+	*** 000533	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000538	83 c4 04 		add	sp,4
+;|***   
+;|***   start_com2_isr:
+; Line 366
+					$start_com2_isr2063:
+;|***   
+;|***   // check contents of COM2_IIR  
+;|***   intr = _inp(COM2_IIR);
+; Line 369
+	*** 00053b	68 fa 02 		push	762	;02faH
+	*** 00053e	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000543	83 c4 02 		add	sp,2
+	*** 000546	89 46 fe 		mov	WORD PTR [bp-2],ax	;intr
+;|***   intr = intr & 0x0f; // mask off b7 to b4
+; Line 370
+	*** 000549	83 66 fe 0f 		and	WORD PTR [bp-2],15	;000fH	;intr
+;|***   
+;|***   if((intr & 0x01) == 0) // if a valid com2 interrupt is pending
+; Line 372
+	*** 00054d	f6 46 fe 01 		test	BYTE PTR [bp-2],1	;intr
+	*** 000551	74 03 			je	$JCC1361
+	*** 000553	e9 b8 01 		jmp	$I2064
+					$JCC1361:
+;|***     {   
+; Line 373
+;|***     // shift IIR value right one bit and test to see which routine is required
+;|***     intr = intr >> 1;
+; Line 375
+	*** 000556	d1 6e fe 		shr	WORD PTR [bp-2],1	;intr
+;|***   
+;|***     // do rs232 input interrupt routine
+;|***     if(intr == 0)
+; Line 378
+	*** 000559	83 7e fe 00 		cmp	WORD PTR [bp-2],0	;intr
+	*** 00055d	74 03 			je	$JCC1373
+	*** 00055f	e9 11 00 		jmp	$I2065
+					$JCC1373:
+;|***       {
+; Line 379
+;	msr_char = -6
+;|***       // read the rs232 status register
+;|***       unsigned msr_char = _inp(COM2_MSR);
+; Line 381
+	*** 000562	68 fe 02 		push	766	;02feH
+	*** 000565	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 00056a	83 c4 02 		add	sp,2
+	*** 00056d	89 46 fa 		mov	WORD PTR [bp-6],ax	;msr_char
+;|***       goto start_com2_isr;
+; Line 382
+	*** 000570	e9 c8 ff 		jmp	$start_com2_isr2063
+;|***       }
+; Line 383
+;|***      
+;|***     // do tx buffer empty interrupt routine
+;|***     if(intr == 1)
+; Line 386
+					$I2065:
+	*** 000573	83 7e fe 01 		cmp	WORD PTR [bp-2],1	;intr
+	*** 000577	74 03 			je	$JCC1399
+	*** 000579	e9 8b 00 		jmp	$I2067
+					$JCC1399:
+;|***       {
+; Line 387
+;|***       // either write to tx FIFO or read int id register again
+;|***       
+;|***       // the idea here is to continue a tx once it has started,
+;|***       // not to start one in the first place
+;|***       
+;|***       // the tx is started by the main() program writing the first
+;|***       // char to the tx buffer, which will send the char out
+;|***       
+;|***       // once the tx fifo has drained, the tbe bit will be
+;|***       // set in the iir, indicating that the tx buffer is ready for more
+;|***       
+;|***       // we will refill the tx fifo, up to 127 chars, for a total of 128
+;|***       if(com2_tx==0)  // no message to tx
+; Line 400
+	*** 00057c	83 3e 00 00 00 		cmp	WORD PTR ?com2_tx@@3IE,0	;com2_tx
+	*** 000581	74 03 			je	$JCC1409
+	*** 000583	e9 0e 00 		jmp	$I2068
+					$JCC1409:
+;|***         {
+; Line 401
+;|***         _inp(COM2_IIR);
+; Line 402
+	*** 000586	68 fa 02 		push	762	;02faH
+	*** 000589	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 00058e	83 c4 02 		add	sp,2
+;|***         goto start_com2_isr;
+; Line 403
+	*** 000591	e9 a7 ff 		jmp	$start_com2_isr2063
+;|***         }
+; Line 404
+;|***       if(com2_tx==1)  // tx remaining message
+; Line 405
+					$I2068:
+	*** 000594	83 3e 00 00 01 		cmp	WORD PTR ?com2_tx@@3IE,1	;com2_tx
+	*** 000599	74 03 			je	$JCC1433
+	*** 00059b	e9 66 00 		jmp	$I2069
+					$JCC1433:
+;|***         {
+; Line 406
+;|***         for(i=0; i<16;i++) // load 16 characters into the tx fifo
+; Line 407
+	*** 00059e	c7 46 fc 00 00 		mov	WORD PTR [bp-4],0	;i
+	*** 0005a3	e9 03 00 		jmp	$F2070
+					$FC2071:
+	*** 0005a6	ff 46 fc 		inc	WORD PTR [bp-4]	;i
+					$F2070:
+	*** 0005a9	83 7e fc 10 		cmp	WORD PTR [bp-4],16	;0010H	;i
+	*** 0005ad	72 03 			jb	$JCC1453
+	*** 0005af	e9 52 00 		jmp	$FB2072
+					$JCC1453:
+;|***           {
+; Line 408
+;|***           if(com2_tx==0) break;
+; Line 409
+	*** 0005b2	83 3e 00 00 00 		cmp	WORD PTR ?com2_tx@@3IE,0	;com2_tx
+	*** 0005b7	74 03 			je	$JCC1463
+	*** 0005b9	e9 06 00 		jmp	$I2073
+					$JCC1463:
+	*** 0005bc	e9 45 00 		jmp	$FB2072
+;|***           else  // only if more message needs to be sent
+; Line 410
+	*** 0005bf	e9 3f 00 		jmp	$I2074
+					$I2073:
+;|***             {
+; Line 411
+;|***             _outp(COM2_TX, tx2_message[tx2_index]); // write the next character
+; Line 412
+	*** 0005c2	8b 1e 00 00 		mov	bx,WORD PTR ?tx2_index@@3IE	;tx2_index
+	*** 0005c6	8a 87 00 00 		mov	al,BYTE PTR ?tx2_message@@3QIEI[bx]	;tx2_message
+	*** 0005ca	2a e4 			sub	ah,ah
+	*** 0005cc	50 			push	ax
+	*** 0005cd	68 f8 02 		push	760	;02f8H
+	*** 0005d0	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 0005d5	83 c4 04 		add	sp,4
+;|***             tx2_index++;
+; Line 413
+	*** 0005d8	ff 06 00 00 		inc	WORD PTR ?tx2_index@@3IE	;tx2_index
+;|***             tx2_counter++;
+; Line 414
+	*** 0005dc	ff 06 00 00 		inc	WORD PTR ?tx2_counter@@3IE	;tx2_counter
+;|***             if(tx2_index >= tx2_len)  // entire message has been sent
+; Line 415
+	*** 0005e0	a1 00 00 		mov	ax,WORD PTR ?tx2_index@@3IE	;tx2_index
+	*** 0005e3	39 06 00 00 		cmp	WORD PTR ?tx2_len@@3IE,ax	;tx2_len
+	*** 0005e7	76 03 			jbe	$JCC1511
+	*** 0005e9	e9 15 00 		jmp	$I2075
+					$JCC1511:
+;|***               {
+; Line 416
+;|***               tx2_index = 0;
+; Line 417
+	*** 0005ec	c7 06 00 00 00 00 	mov	WORD PTR ?tx2_index@@3IE,0	;tx2_index
+;|***               com2_tx = 0;
+; Line 418
+	*** 0005f2	c7 06 00 00 00 00 	mov	WORD PTR ?com2_tx@@3IE,0	;com2_tx
+;|***               tx2_len = 0;
+; Line 419
+	*** 0005f8	c7 06 00 00 00 00 	mov	WORD PTR ?tx2_len@@3IE,0	;tx2_len
+;|***               goto start_com2_isr;  
+; Line 420
+	*** 0005fe	e9 3a ff 		jmp	$start_com2_isr2063
+;|***               }
+; Line 421
+;|***             }
+; Line 422
+					$I2075:
+					$I2074:
+;|***           }
+; Line 423
+	*** 000601	e9 a2 ff 		jmp	$FC2071
+					$FB2072:
+;|***         }
+; Line 424
+;|***       goto start_com2_isr;    
+; Line 425
+					$I2069:
+	*** 000604	e9 34 ff 		jmp	$start_com2_isr2063
+;|***       }
+; Line 426
+;|***       
+;|***     // rx data received interrupt routine (>= 14 bytes in receive buffer)
+;|***     if(intr == 2)
+; Line 429
+					$I2067:
+	*** 000607	83 7e fe 02 		cmp	WORD PTR [bp-2],2	;intr
+	*** 00060b	74 03 			je	$JCC1547
+	*** 00060d	e9 41 00 		jmp	$I2076
+					$JCC1547:
+;|***       {
+; Line 430
+;|***       // read rx register
+;|***             
+;|***       // read 12 bytes from the rx register (still at least 2 bytes left)
+;|***       for(i = 0; i < 12; i++)
+; Line 434
+	*** 000610	c7 46 fc 00 00 		mov	WORD PTR [bp-4],0	;i
+	*** 000615	e9 03 00 		jmp	$F2077
+					$FC2078:
+	*** 000618	ff 46 fc 		inc	WORD PTR [bp-4]	;i
+					$F2077:
+	*** 00061b	83 7e fc 0c 		cmp	WORD PTR [bp-4],12	;000cH	;i
+	*** 00061f	72 03 			jb	$JCC1567
+	*** 000621	e9 2a 00 		jmp	$FB2079
+					$JCC1567:
+;|***         {
+; Line 435
+;|***         rx2_message[rx2_index] = _inp(COM2_RX);
+; Line 436
+	*** 000624	68 f8 02 		push	760	;02f8H
+	*** 000627	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 00062c	83 c4 02 		add	sp,2
+	*** 00062f	8b 1e 00 00 		mov	bx,WORD PTR ?rx2_index@@3IE	;rx2_index
+	*** 000633	88 87 00 00 		mov	BYTE PTR ?rx2_message@@3QIEI[bx],al	;rx2_message
+;|***         rx2_index++;
+; Line 437
+	*** 000637	ff 06 00 00 		inc	WORD PTR ?rx2_index@@3IE	;rx2_index
+;|***         if(rx2_index >= 80)
+; Line 438
+	*** 00063b	83 3e 00 00 50 		cmp	WORD PTR ?rx2_index@@3IE,80	;0050H	;rx2_index
+	*** 000640	73 03 			jae	$JCC1600
+	*** 000642	e9 06 00 		jmp	$I2080
+					$JCC1600:
+;|***           rx2_index = 0;
+; Line 439
+	*** 000645	c7 06 00 00 00 00 	mov	WORD PTR ?rx2_index@@3IE,0	;rx2_index
+;|***         }
+; Line 440
+					$I2080:
+	*** 00064b	e9 ca ff 		jmp	$FC2078
+					$FB2079:
+;|***         
+;|***       goto start_com2_isr;
+; Line 442
+	*** 00064e	e9 ea fe 		jmp	$start_com2_isr2063
+;|***       }
+; Line 443
+;|***     
+;|***     // else do serialization error/break routine  
+;|***     if(intr == 3)
+; Line 446
+					$I2076:
+	*** 000651	83 7e fe 03 		cmp	WORD PTR [bp-2],3	;intr
+	*** 000655	74 03 			je	$JCC1621
+	*** 000657	e9 11 00 		jmp	$I2081
+					$JCC1621:
+;|***       {
+; Line 447
+;	lsr_char = -6
+;|***       // read serialization status register
+;|***       unsigned lsr_char = _inp(COM2_LSR);
+; Line 449
+	*** 00065a	68 fd 02 		push	765	;02fdH
+	*** 00065d	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000662	83 c4 02 		add	sp,2
+	*** 000665	89 46 fa 		mov	WORD PTR [bp-6],ax	;msr_char
+;|***       goto start_com2_isr;
+; Line 450
+	*** 000668	e9 d0 fe 		jmp	$start_com2_isr2063
+;|***       }
+; Line 451
+;|***     
+;|***     // do rx character timeout routine: message end
+;|***     if(intr == 6)
+; Line 454
+					$I2081:
+	*** 00066b	83 7e fe 06 		cmp	WORD PTR [bp-2],6	;intr
+	*** 00066f	74 03 			je	$JCC1647
+	*** 000671	e9 97 00 		jmp	$I2083
+					$JCC1647:
+;|***       {
+; Line 455
+;|***       // drain rx register first
+;|***       while((_inp(COM2_LSR) & 0x01) == 1)
+; Line 457
+					$FC2085:
+	*** 000674	68 fd 02 		push	765	;02fdH
+	*** 000677	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 00067c	83 c4 02 		add	sp,2
+	*** 00067f	24 01 			and	al,1
+	*** 000681	3c 01 			cmp	al,1
+	*** 000683	74 03 			je	$JCC1667
+	*** 000685	e9 2a 00 		jmp	$FB2086
+					$JCC1667:
+;|***         {
+; Line 458
+;|***         rx2_message[rx2_index] = _inp(COM2_RX);
+; Line 459
+	*** 000688	68 f8 02 		push	760	;02f8H
+	*** 00068b	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000690	83 c4 02 		add	sp,2
+	*** 000693	8b 1e 00 00 		mov	bx,WORD PTR ?rx2_index@@3IE	;rx2_index
+	*** 000697	88 87 00 00 		mov	BYTE PTR ?rx2_message@@3QIEI[bx],al	;rx2_message
+;|***         rx2_index++;
+; Line 460
+	*** 00069b	ff 06 00 00 		inc	WORD PTR ?rx2_index@@3IE	;rx2_index
+;|***         if(rx2_index >= 80)
+; Line 461
+	*** 00069f	83 3e 00 00 50 		cmp	WORD PTR ?rx2_index@@3IE,80	;0050H	;rx2_index
+	*** 0006a4	73 03 			jae	$JCC1700
+	*** 0006a6	e9 06 00 		jmp	$I2087
+					$JCC1700:
+;|***           rx2_index = 0;
+; Line 462
+	*** 0006a9	c7 06 00 00 00 00 	mov	WORD PTR ?rx2_index@@3IE,0	;rx2_index
+;|***         }
+; Line 463
+					$I2087:
+	*** 0006af	e9 c2 ff 		jmp	$FC2085
+					$FB2086:
+;|***       
+;|***       if(rx2_index >= 8) // complete frame received
+; Line 465
+	*** 0006b2	83 3e 00 00 08 		cmp	WORD PTR ?rx2_index@@3IE,8	;rx2_index
+	*** 0006b7	73 03 			jae	$JCC1719
+	*** 0006b9	e9 4c 00 		jmp	$I2088
+					$JCC1719:
+;|***         {
+; Line 466
+;|***         time_stamp(&ds_time);
+; Line 467
+	*** 0006bc	68 00 00 		push	SEG ?ds_time@@3UTIMER@@E	;ds_time
+	*** 0006bf	68 00 00 		push	OFFSET ?ds_time@@3UTIMER@@E	;ds_time
+	*** 0006c2	9a 00 00 00 00 		call	FAR PTR ?time_stamp@@ZAXPEUTIMER@@@Z	; time_stamp
+	*** 0006c7	83 c4 04 		add	sp,4
+;|***         memcpy(ds_buffer, rx2_message, sizeof(ds_buffer));
+; Line 468
+	*** 0006ca	6a 50 			push	80	;0050H
+	*** 0006cc	1e 			push	ds
+	*** 0006cd	68 00 00 		push	OFFSET DGROUP:?rx2_message@@3QIEI	;rx2_message
+	*** 0006d0	68 00 00 		push	SEG ?ds_buffer@@3QIEI	;ds_buffer
+	*** 0006d3	68 00 00 		push	OFFSET ?ds_buffer@@3QIEI	;ds_buffer
+	*** 0006d6	9a 00 00 00 00 		call	FAR PTR _memcpy
+	*** 0006db	83 c4 0a 		add	sp,10	;000aH
+;|***         ds_new_data = 1;
+; Line 469
+	*** 0006de	c7 06 00 00 01 00 	mov	WORD PTR ?ds_new_data@@3IE,1	;ds_new_data
+;|***         ds_data_frame = frame;
+; Line 470
+	*** 0006e4	a1 00 00 		mov	ax,WORD PTR ?frame@@3KE	;frame
+	*** 0006e7	8b 16 02 00 		mov	dx,WORD PTR ?frame@@3KE+2	;frame
+	*** 0006eb	a3 00 00 		mov	WORD PTR ?ds_data_frame@@3KE,ax	;ds_data_frame
+	*** 0006ee	89 16 02 00 		mov	WORD PTR ?ds_data_frame@@3KE+2,dx	;ds_data_frame
+;|***         rx2_index = 0;
+; Line 471
+	*** 0006f2	c7 06 00 00 00 00 	mov	WORD PTR ?rx2_index@@3IE,0	;rx2_index
+;|***         //for(i=0; i<sizeof(rx2_message); i++)
+;|***         //  rx2_message[i] = 0;
+;|***         _fmemset(rx2_message, 0, sizeof(rx2_message));
+; Line 474
+	*** 0006f8	6a 58 			push	88	;0058H
+	*** 0006fa	6a 00 			push	0
+	*** 0006fc	1e 			push	ds
+	*** 0006fd	68 00 00 		push	OFFSET DGROUP:?rx2_message@@3QIEI	;rx2_message
+	*** 000700	9a 00 00 00 00 		call	FAR PTR __fmemset
+	*** 000705	83 c4 08 		add	sp,8
+;|***         }
+; Line 475
+;|*** 
+;|***       goto start_com2_isr;      
+; Line 477
+					$I2088:
+	*** 000708	e9 30 fe 		jmp	$start_com2_isr2063
+;|***       } // end rx character timeout routine
+; Line 478
+;|***         
+;|***     goto start_com2_isr;
+; Line 480
+					$I2083:
+	*** 00070b	e9 2d fe 		jmp	$start_com2_isr2063
+;|***     }  // end if((intr & 0x01) == 0)
+; Line 481
+;|***   
+;|***   _disable();  
+; Line 483
+					$I2064:
+	*** 00070e	9a 00 00 00 00 		call	FAR PTR __disable
+;|***   // enable com2 uart interrupts    
+;|***   _outp(COM2_MCR, _inp(COM2_MCR) | 0x08);
+; Line 485
+	*** 000713	68 fc 02 		push	764	;02fcH
+	*** 000716	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 00071b	83 c4 02 		add	sp,2
+	*** 00071e	0d 08 00 		or	ax,8
+	*** 000721	50 			push	ax
+	*** 000722	68 fc 02 		push	764	;02fcH
+	*** 000725	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 00072a	83 c4 04 		add	sp,4
+;|***   _outp(0x20, 0x20);  // non-specific return from interrupt
+; Line 486
+	*** 00072d	6a 20 			push	32	;0020H
+	*** 00072f	6a 20 			push	32	;0020H
+	*** 000731	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000736	83 c4 04 		add	sp,4
+;|***   }  // end com2_isr()
+; Line 487
+	*** 000739	e9 00 00 		jmp	$EX2060
+					$EX2060:
+	*** 00073c	8b e5 			mov	sp,bp
+	*** 00073e	07 			pop	es
+	*** 00073f	1f 			pop	ds
+	ASSUME DS: DGROUP
+	*** 000740	61 			popa
+	*** 000741	cf 			iret	
+
+?com2_isr@@ZAXXZ	ENDP
+	PUBLIC	?com4_isr@@ZAXXZ	; com4_isr
+?com4_isr@@ZAXXZ	PROC FAR	; com4_isr
+;|*** 
+;|*** 
+;|*** 
+;|*** void interrupt far com4_isr(void)
+;|***   {
+; Line 492
+	*** 000742	60 			pusha
+	*** 000743	1e 			push	ds
+	*** 000744	06 			push	es
+	*** 000745	8b ec 			mov	bp,sp
+	*** 000747	81 ec 06 00 		sub	sp,6
+	*** 00074b	1e 			push	ds
+	*** 00074c	b8 00 00 		mov	ax,DGROUP
+	*** 00074f	8e d8 			mov	ds,ax
+	ASSUME DS: DGROUP
+	*** 000751	fc 			cld	
+;	intr = -2
+;	i = -4
+;|***   // performs rs232 functions on com4
+;|***   unsigned intr;
+;|***   unsigned i;
+;|***     
+;|***   _enable();
+; Line 497
+	*** 000752	9a 00 00 00 00 		call	FAR PTR __enable
+;|***     
+;|***   // disable com4 uart interrupts      
+;|***   _outp(COM4_MCR, _inp(COM4_MCR) & 0xf7);
+; Line 500
+	*** 000757	68 ec 02 		push	748	;02ecH
+	*** 00075a	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 00075f	83 c4 02 		add	sp,2
+	*** 000762	25 f7 00 		and	ax,247	;00f7H
+	*** 000765	50 			push	ax
+	*** 000766	68 ec 02 		push	748	;02ecH
+	*** 000769	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 00076e	83 c4 04 		add	sp,4
+;|***   
+;|***   start_com4_isr:
+; Line 502
+					$start_com4_isr2093:
+;|***   
+;|***   // check contents of COM4_IIR  
+;|***   intr = _inp(COM4_IIR);
+; Line 505
+	*** 000771	68 ea 02 		push	746	;02eaH
+	*** 000774	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000779	83 c4 02 		add	sp,2
+	*** 00077c	89 46 fe 		mov	WORD PTR [bp-2],ax	;intr
+;|***   intr = intr & 0x0f; // mask off b7 to b4
+; Line 506
+	*** 00077f	83 66 fe 0f 		and	WORD PTR [bp-2],15	;000fH	;intr
+;|***   
+;|***   if((intr & 0x01) == 0) // if a valid com4 interrupt is pending
+; Line 508
+	*** 000783	f6 46 fe 01 		test	BYTE PTR [bp-2],1	;intr
+	*** 000787	74 03 			je	$JCC1927
+	*** 000789	e9 b8 01 		jmp	$I2094
+					$JCC1927:
+;|***     {   
+; Line 509
+;|***     // shift IIR value right one bit and test to see which routine is required
+;|***     intr = intr >> 1;
+; Line 511
+	*** 00078c	d1 6e fe 		shr	WORD PTR [bp-2],1	;intr
+;|***   
+;|***     // do rs232 input interrupt routine
+;|***     if(intr == 0)
+; Line 514
+	*** 00078f	83 7e fe 00 		cmp	WORD PTR [bp-2],0	;intr
+	*** 000793	74 03 			je	$JCC1939
+	*** 000795	e9 11 00 		jmp	$I2095
+					$JCC1939:
+;|***       {
+; Line 515
+;	msr_char = -6
+;|***       // read the rs232 status register
+;|***       unsigned msr_char = _inp(COM4_MSR);
+; Line 517
+	*** 000798	68 ee 02 		push	750	;02eeH
+	*** 00079b	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0007a0	83 c4 02 		add	sp,2
+	*** 0007a3	89 46 fa 		mov	WORD PTR [bp-6],ax	;msr_char
+;|***       goto start_com4_isr;
+; Line 518
+	*** 0007a6	e9 c8 ff 		jmp	$start_com4_isr2093
+;|***       }
+; Line 519
+;|***      
+;|***     // do tx buffer empty interrupt routine
+;|***     if(intr == 1)
+; Line 522
+					$I2095:
+	*** 0007a9	83 7e fe 01 		cmp	WORD PTR [bp-2],1	;intr
+	*** 0007ad	74 03 			je	$JCC1965
+	*** 0007af	e9 8b 00 		jmp	$I2097
+					$JCC1965:
+;|***       {
+; Line 523
+;|***       // either write to tx FIFO or read int id register again
+;|***       
+;|***       // the idea here is to continue a tx once it has started,
+;|***       // not to start one in the first place
+;|***       
+;|***       // the tx is started by the main() program writing the first
+;|***       // char to the tx buffer, which will send the char out
+;|***       
+;|***       // once the tx fifo has drained, the tbe bit will be
+;|***       // set in the iir, indicating that the tx buffer is ready for more
+;|***       
+;|***       // we will refill the tx fifo, up to 127 chars, for a total of 128
+;|***       if(com4_tx==0)  // no message to tx
+; Line 536
+	*** 0007b2	83 3e 00 00 00 		cmp	WORD PTR ?com4_tx@@3IE,0	;com4_tx
+	*** 0007b7	74 03 			je	$JCC1975
+	*** 0007b9	e9 0e 00 		jmp	$I2098
+					$JCC1975:
+;|***         {
+; Line 537
+;|***         _inp(COM4_IIR);
+; Line 538
+	*** 0007bc	68 ea 02 		push	746	;02eaH
+	*** 0007bf	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0007c4	83 c4 02 		add	sp,2
+;|***         goto start_com4_isr;
+; Line 539
+	*** 0007c7	e9 a7 ff 		jmp	$start_com4_isr2093
+;|***         }
+; Line 540
+;|***       if(com4_tx==1)  // tx remaining message
+; Line 541
+					$I2098:
+	*** 0007ca	83 3e 00 00 01 		cmp	WORD PTR ?com4_tx@@3IE,1	;com4_tx
+	*** 0007cf	74 03 			je	$JCC1999
+	*** 0007d1	e9 66 00 		jmp	$I2099
+					$JCC1999:
+;|***         {
+; Line 542
+;|***         for(i=0; i<16;i++) // load 16 characters into the tx fifo
+; Line 543
+	*** 0007d4	c7 46 fc 00 00 		mov	WORD PTR [bp-4],0	;i
+	*** 0007d9	e9 03 00 		jmp	$F2100
+					$FC2101:
+	*** 0007dc	ff 46 fc 		inc	WORD PTR [bp-4]	;i
+					$F2100:
+	*** 0007df	83 7e fc 10 		cmp	WORD PTR [bp-4],16	;0010H	;i
+	*** 0007e3	72 03 			jb	$JCC2019
+	*** 0007e5	e9 52 00 		jmp	$FB2102
+					$JCC2019:
+;|***           {
+; Line 544
+;|***           if(com4_tx==0) break;
+; Line 545
+	*** 0007e8	83 3e 00 00 00 		cmp	WORD PTR ?com4_tx@@3IE,0	;com4_tx
+	*** 0007ed	74 03 			je	$JCC2029
+	*** 0007ef	e9 06 00 		jmp	$I2103
+					$JCC2029:
+	*** 0007f2	e9 45 00 		jmp	$FB2102
+;|***           else  // only if more message needs to be sent
+; Line 546
+	*** 0007f5	e9 3f 00 		jmp	$I2104
+					$I2103:
+;|***             {
+; Line 547
+;|***             _outp(COM4_TX, tx4_message[tx4_index]); // write the next character
+; Line 548
+	*** 0007f8	8b 1e 00 00 		mov	bx,WORD PTR ?tx4_index@@3IE	;tx4_index
+	*** 0007fc	8a 87 00 00 		mov	al,BYTE PTR ?tx4_message@@3QIEI[bx]	;tx4_message
+	*** 000800	2a e4 			sub	ah,ah
+	*** 000802	50 			push	ax
+	*** 000803	68 e8 02 		push	744	;02e8H
+	*** 000806	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 00080b	83 c4 04 		add	sp,4
+;|***             tx4_index++;
+; Line 549
+	*** 00080e	ff 06 00 00 		inc	WORD PTR ?tx4_index@@3IE	;tx4_index
+;|***             tx4_counter++;
+; Line 550
+	*** 000812	ff 06 00 00 		inc	WORD PTR ?tx4_counter@@3IE	;tx4_counter
+;|***             if(tx4_index >= tx4_len)  // entire message has been sent
+; Line 551
+	*** 000816	a1 00 00 		mov	ax,WORD PTR ?tx4_index@@3IE	;tx4_index
+	*** 000819	39 06 00 00 		cmp	WORD PTR ?tx4_len@@3IE,ax	;tx4_len
+	*** 00081d	76 03 			jbe	$JCC2077
+	*** 00081f	e9 15 00 		jmp	$I2105
+					$JCC2077:
+;|***               {
+; Line 552
+;|***               tx4_index = 0;
+; Line 553
+	*** 000822	c7 06 00 00 00 00 	mov	WORD PTR ?tx4_index@@3IE,0	;tx4_index
+;|***               com4_tx = 0;
+; Line 554
+	*** 000828	c7 06 00 00 00 00 	mov	WORD PTR ?com4_tx@@3IE,0	;com4_tx
+;|***               tx4_len = 0;
+; Line 555
+	*** 00082e	c7 06 00 00 00 00 	mov	WORD PTR ?tx4_len@@3IE,0	;tx4_len
+;|***               goto start_com4_isr;  
+; Line 556
+	*** 000834	e9 3a ff 		jmp	$start_com4_isr2093
+;|***               }
+; Line 557
+;|***             }
+; Line 558
+					$I2105:
+					$I2104:
+;|***           }
+; Line 559
+	*** 000837	e9 a2 ff 		jmp	$FC2101
+					$FB2102:
+;|***         }
+; Line 560
+;|***       goto start_com4_isr;    
+; Line 561
+					$I2099:
+	*** 00083a	e9 34 ff 		jmp	$start_com4_isr2093
+;|***       }
+; Line 562
+;|***       
+;|***     // rx data received interrupt routine (>= 14 bytes in receive buffer)
+;|***     if(intr == 2)
+; Line 565
+					$I2097:
+	*** 00083d	83 7e fe 02 		cmp	WORD PTR [bp-2],2	;intr
+	*** 000841	74 03 			je	$JCC2113
+	*** 000843	e9 41 00 		jmp	$I2106
+					$JCC2113:
+;|***       {
+; Line 566
+;|***       // read rx register
+;|***             
+;|***       // read 12 bytes from the rx register (still at least 2 bytes left)
+;|***       for(i = 0; i < 12; i++)
+; Line 570
+	*** 000846	c7 46 fc 00 00 		mov	WORD PTR [bp-4],0	;i
+	*** 00084b	e9 03 00 		jmp	$F2107
+					$FC2108:
+	*** 00084e	ff 46 fc 		inc	WORD PTR [bp-4]	;i
+					$F2107:
+	*** 000851	83 7e fc 0c 		cmp	WORD PTR [bp-4],12	;000cH	;i
+	*** 000855	72 03 			jb	$JCC2133
+	*** 000857	e9 2a 00 		jmp	$FB2109
+					$JCC2133:
+;|***         {
+; Line 571
+;|***         rx4_message[rx4_index] = _inp(COM4_RX);
+; Line 572
+	*** 00085a	68 e8 02 		push	744	;02e8H
+	*** 00085d	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000862	83 c4 02 		add	sp,2
+	*** 000865	8b 1e 00 00 		mov	bx,WORD PTR ?rx4_index@@3IE	;rx4_index
+	*** 000869	88 87 00 00 		mov	BYTE PTR ?rx4_message@@3QIEI[bx],al	;rx4_message
+;|***         rx4_index++;
+; Line 573
+	*** 00086d	ff 06 00 00 		inc	WORD PTR ?rx4_index@@3IE	;rx4_index
+;|***         if(rx4_index >= 80)
+; Line 574
+	*** 000871	83 3e 00 00 50 		cmp	WORD PTR ?rx4_index@@3IE,80	;0050H	;rx4_index
+	*** 000876	73 03 			jae	$JCC2166
+	*** 000878	e9 06 00 		jmp	$I2110
+					$JCC2166:
+;|***           rx4_index = 0;
+; Line 575
+	*** 00087b	c7 06 00 00 00 00 	mov	WORD PTR ?rx4_index@@3IE,0	;rx4_index
+;|***         }
+; Line 576
+					$I2110:
+	*** 000881	e9 ca ff 		jmp	$FC2108
+					$FB2109:
+;|***         
+;|***       goto start_com4_isr;
+; Line 578
+	*** 000884	e9 ea fe 		jmp	$start_com4_isr2093
+;|***       }
+; Line 579
+;|***     
+;|***     // else do serialization error/break routine  
+;|***     if(intr == 3)
+; Line 582
+					$I2106:
+	*** 000887	83 7e fe 03 		cmp	WORD PTR [bp-2],3	;intr
+	*** 00088b	74 03 			je	$JCC2187
+	*** 00088d	e9 11 00 		jmp	$I2111
+					$JCC2187:
+;|***       {
+; Line 583
+;	lsr_char = -6
+;|***       // read serialization status register
+;|***       unsigned lsr_char = _inp(COM4_LSR);
+; Line 585
+	*** 000890	68 ed 02 		push	749	;02edH
+	*** 000893	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000898	83 c4 02 		add	sp,2
+	*** 00089b	89 46 fa 		mov	WORD PTR [bp-6],ax	;msr_char
+;|***       goto start_com4_isr;
+; Line 586
+	*** 00089e	e9 d0 fe 		jmp	$start_com4_isr2093
+;|***       }
+; Line 587
+;|***     
+;|***     // do rx character timeout routine: message end
+;|***     if(intr == 6)
+; Line 590
+					$I2111:
+	*** 0008a1	83 7e fe 06 		cmp	WORD PTR [bp-2],6	;intr
+	*** 0008a5	74 03 			je	$JCC2213
+	*** 0008a7	e9 97 00 		jmp	$I2113
+					$JCC2213:
+;|***       {
+; Line 591
+;|***       // drain rx register first
+;|***       while((_inp(COM4_LSR) & 0x01) == 1)
+; Line 593
+					$FC2115:
+	*** 0008aa	68 ed 02 		push	749	;02edH
+	*** 0008ad	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0008b2	83 c4 02 		add	sp,2
+	*** 0008b5	24 01 			and	al,1
+	*** 0008b7	3c 01 			cmp	al,1
+	*** 0008b9	74 03 			je	$JCC2233
+	*** 0008bb	e9 2a 00 		jmp	$FB2116
+					$JCC2233:
+;|***         {
+; Line 594
+;|***         rx4_message[rx4_index] = _inp(COM4_RX);
+; Line 595
+	*** 0008be	68 e8 02 		push	744	;02e8H
+	*** 0008c1	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0008c6	83 c4 02 		add	sp,2
+	*** 0008c9	8b 1e 00 00 		mov	bx,WORD PTR ?rx4_index@@3IE	;rx4_index
+	*** 0008cd	88 87 00 00 		mov	BYTE PTR ?rx4_message@@3QIEI[bx],al	;rx4_message
+;|***         rx4_index++;
+; Line 596
+	*** 0008d1	ff 06 00 00 		inc	WORD PTR ?rx4_index@@3IE	;rx4_index
+;|***         if(rx4_index >= 80)
+; Line 597
+	*** 0008d5	83 3e 00 00 50 		cmp	WORD PTR ?rx4_index@@3IE,80	;0050H	;rx4_index
+	*** 0008da	73 03 			jae	$JCC2266
+	*** 0008dc	e9 06 00 		jmp	$I2117
+					$JCC2266:
+;|***           rx4_index = 0;
+; Line 598
+	*** 0008df	c7 06 00 00 00 00 	mov	WORD PTR ?rx4_index@@3IE,0	;rx4_index
+;|***         }
+; Line 599
+					$I2117:
+	*** 0008e5	e9 c2 ff 		jmp	$FC2115
+					$FB2116:
+;|***       
+;|***       if(rx4_index >= 77) // complete frame received
+; Line 601
+	*** 0008e8	83 3e 00 00 4d 		cmp	WORD PTR ?rx4_index@@3IE,77	;004dH	;rx4_index
+	*** 0008ed	73 03 			jae	$JCC2285
+	*** 0008ef	e9 4c 00 		jmp	$I2118
+					$JCC2285:
+;|***         {
+; Line 602
+;|***         time_stamp(&gps_time);
+; Line 603
+	*** 0008f2	68 00 00 		push	SEG ?gps_time@@3UTIMER@@E	;gps_time
+	*** 0008f5	68 00 00 		push	OFFSET ?gps_time@@3UTIMER@@E	;gps_time
+	*** 0008f8	9a 00 00 00 00 		call	FAR PTR ?time_stamp@@ZAXPEUTIMER@@@Z	; time_stamp
+	*** 0008fd	83 c4 04 		add	sp,4
+;|***         memcpy(gps_buffer, rx4_message, sizeof(gps_buffer));
+; Line 604
+	*** 000900	6a 50 			push	80	;0050H
+	*** 000902	1e 			push	ds
+	*** 000903	68 00 00 		push	OFFSET DGROUP:?rx4_message@@3QIEI	;rx4_message
+	*** 000906	68 00 00 		push	SEG ?gps_buffer@@3QIEI	;gps_buffer
+	*** 000909	68 00 00 		push	OFFSET ?gps_buffer@@3QIEI	;gps_buffer
+	*** 00090c	9a 00 00 00 00 		call	FAR PTR _memcpy
+	*** 000911	83 c4 0a 		add	sp,10	;000aH
+;|***         gps_new_data = 1;
+; Line 605
+	*** 000914	c7 06 00 00 01 00 	mov	WORD PTR ?gps_new_data@@3IE,1	;gps_new_data
+;|***         gps_data_frame = frame;
+; Line 606
+	*** 00091a	a1 00 00 		mov	ax,WORD PTR ?frame@@3KE	;frame
+	*** 00091d	8b 16 02 00 		mov	dx,WORD PTR ?frame@@3KE+2	;frame
+	*** 000921	a3 00 00 		mov	WORD PTR ?gps_data_frame@@3KE,ax	;gps_data_frame
+	*** 000924	89 16 02 00 		mov	WORD PTR ?gps_data_frame@@3KE+2,dx	;gps_data_frame
+;|***         rx4_index = 0;
+; Line 607
+	*** 000928	c7 06 00 00 00 00 	mov	WORD PTR ?rx4_index@@3IE,0	;rx4_index
+;|***         //for(i=0; i<sizeof(rx4_message); i++)
+;|***         //  rx4_message[i] = 0;
+;|***         _fmemset(rx4_message, 0, sizeof(rx4_message));
+; Line 610
+	*** 00092e	6a 50 			push	80	;0050H
+	*** 000930	6a 00 			push	0
+	*** 000932	1e 			push	ds
+	*** 000933	68 00 00 		push	OFFSET DGROUP:?rx4_message@@3QIEI	;rx4_message
+	*** 000936	9a 00 00 00 00 		call	FAR PTR __fmemset
+	*** 00093b	83 c4 08 		add	sp,8
+;|***         }
+; Line 611
+;|*** 
+;|***       goto start_com4_isr;      
+; Line 613
+					$I2118:
+	*** 00093e	e9 30 fe 		jmp	$start_com4_isr2093
+;|***       } // end rx character timeout routine
+; Line 614
+;|***         
+;|***     goto start_com4_isr;
+; Line 616
+					$I2113:
+	*** 000941	e9 2d fe 		jmp	$start_com4_isr2093
+;|***     }  // end if((intr & 0x01) == 0)
+; Line 617
+;|***   
+;|***   _disable();  
+; Line 619
+					$I2094:
+	*** 000944	9a 00 00 00 00 		call	FAR PTR __disable
+;|***   // enable com4 uart interrupts    
+;|***   _outp(COM4_MCR, _inp(COM4_MCR) | 0x08);
+; Line 621
+	*** 000949	68 ec 02 		push	748	;02ecH
+	*** 00094c	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000951	83 c4 02 		add	sp,2
+	*** 000954	0d 08 00 		or	ax,8
+	*** 000957	50 			push	ax
+	*** 000958	68 ec 02 		push	748	;02ecH
+	*** 00095b	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000960	83 c4 04 		add	sp,4
+;|***   _outp(0xa0, 0x20);  // non-specific return from interrupt slave pic
+; Line 622
+	*** 000963	6a 20 			push	32	;0020H
+	*** 000965	68 a0 00 		push	160	;00a0H
+	*** 000968	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 00096d	83 c4 04 		add	sp,4
+;|***   _outp(0x20, 0x20);  // non-specific return from interrupt master pic
+; Line 623
+	*** 000970	6a 20 			push	32	;0020H
+	*** 000972	6a 20 			push	32	;0020H
+	*** 000974	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000979	83 c4 04 		add	sp,4
+;|***   }  // end com4_isr()
+; Line 624
+	*** 00097c	e9 00 00 		jmp	$EX2090
+					$EX2090:
+	*** 00097f	8b e5 			mov	sp,bp
+	*** 000981	07 			pop	es
+	*** 000982	1f 			pop	ds
+	ASSUME DS: DGROUP
+	*** 000983	61 			popa
+	*** 000984	cf 			iret	
+
+?com4_isr@@ZAXXZ	ENDP
+	PUBLIC	?shutdown_com1@@ZAXXZ	; shutdown_com1
+?shutdown_com1@@ZAXXZ	PROC FAR	; shutdown_com1
+;|*** 
+;|*** 
+;|*** void shutdown_com1(void)
+;|***   {
+; Line 628
+	*** 000985	c8 00 00 00 		enter	0,0
+	*** 000989	57 			push	di
+	*** 00098a	56 			push	si
+;|***   _disable();
+; Line 629
+	*** 00098b	9a 00 00 00 00 		call	FAR PTR __disable
+;|***   // disable com1 interrupts at the uart
+;|***   _outp( COM1_MCR, 0X00);
+; Line 631
+	*** 000990	6a 00 			push	0
+	*** 000992	68 fc 03 		push	1020	;03fcH
+	*** 000995	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 00099a	83 c4 04 		add	sp,4
+;|***   _outp( COM1_IER, 0x00);
+; Line 632
+	*** 00099d	6a 00 			push	0
+	*** 00099f	68 f9 03 		push	1017	;03f9H
+	*** 0009a2	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 0009a7	83 c4 04 		add	sp,4
+;|***   // mask irq4 interrupts at pic
+;|***   _outp(0x21, _inp(0x21) | ~0xef);
+; Line 634
+	*** 0009aa	6a 21 			push	33	;0021H
+	*** 0009ac	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0009b1	83 c4 02 		add	sp,2
+	*** 0009b4	0d 10 ff 		or	ax,-240	;ff10H
+	*** 0009b7	50 			push	ax
+	*** 0009b8	6a 21 			push	33	;0021H
+	*** 0009ba	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 0009bf	83 c4 04 		add	sp,4
+;|***   // restore original COM1 vector
+;|***   _dos_setvect(4+8, com1_old_vector);
+; Line 636
+	*** 0009c2	ff 36 02 00 		push	WORD PTR ?com1_old_vector@@3P7AXXZE+2	;com1_old_vector
+	*** 0009c6	ff 36 00 00 		push	WORD PTR ?com1_old_vector@@3P7AXXZE	;com1_old_vector
+	*** 0009ca	6a 0c 			push	12	;000cH
+	*** 0009cc	9a 00 00 00 00 		call	FAR PTR __dos_setvect
+	*** 0009d1	83 c4 06 		add	sp,6
+;|***   _enable();
+; Line 637
+	*** 0009d4	9a 00 00 00 00 		call	FAR PTR __enable
+;|***   }
+; Line 638
+	*** 0009d9	e9 00 00 		jmp	$EX2120
+					$EX2120:
+	*** 0009dc	5e 			pop	si
+	*** 0009dd	5f 			pop	di
+	*** 0009de	c9 			leave	
+	*** 0009df	cb 			ret	
+
+?shutdown_com1@@ZAXXZ	ENDP
+	PUBLIC	?shutdown_com2@@ZAXXZ	; shutdown_com2
+?shutdown_com2@@ZAXXZ	PROC FAR	; shutdown_com2
+;|***   
+;|***   
+;|*** void shutdown_com2(void)
+;|***   {
+; Line 642
+	*** 0009e0	c8 00 00 00 		enter	0,0
+	*** 0009e4	57 			push	di
+	*** 0009e5	56 			push	si
+;|***   _disable();
+; Line 643
+	*** 0009e6	9a 00 00 00 00 		call	FAR PTR __disable
+;|***   // disable com2 interrupts at the uart
+;|***   _outp( COM2_MCR, 0x00);
+; Line 645
+	*** 0009eb	6a 00 			push	0
+	*** 0009ed	68 fc 02 		push	764	;02fcH
+	*** 0009f0	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 0009f5	83 c4 04 		add	sp,4
+;|***   _outp( COM2_IER, 0x00);
+; Line 646
+	*** 0009f8	6a 00 			push	0
+	*** 0009fa	68 f9 02 		push	761	;02f9H
+	*** 0009fd	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000a02	83 c4 04 		add	sp,4
+;|***   // mask irq3 interrupts at pic
+;|***   _outp(0x21, _inp(0x21) | ~0xf7); 
+; Line 648
+	*** 000a05	6a 21 			push	33	;0021H
+	*** 000a07	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000a0c	83 c4 02 		add	sp,2
+	*** 000a0f	0d 08 ff 		or	ax,-248	;ff08H
+	*** 000a12	50 			push	ax
+	*** 000a13	6a 21 			push	33	;0021H
+	*** 000a15	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000a1a	83 c4 04 		add	sp,4
+;|***   // restore original COM2 vector
+;|***   _dos_setvect(3+8, com2_old_vector);
+; Line 650
+	*** 000a1d	ff 36 02 00 		push	WORD PTR ?com2_old_vector@@3P7AXXZE+2	;com2_old_vector
+	*** 000a21	ff 36 00 00 		push	WORD PTR ?com2_old_vector@@3P7AXXZE	;com2_old_vector
+	*** 000a25	6a 0b 			push	11	;000bH
+	*** 000a27	9a 00 00 00 00 		call	FAR PTR __dos_setvect
+	*** 000a2c	83 c4 06 		add	sp,6
+;|***   _enable();
+; Line 651
+	*** 000a2f	9a 00 00 00 00 		call	FAR PTR __enable
+;|***   }
+; Line 652
+	*** 000a34	e9 00 00 		jmp	$EX2122
+					$EX2122:
+	*** 000a37	5e 			pop	si
+	*** 000a38	5f 			pop	di
+	*** 000a39	c9 			leave	
+	*** 000a3a	cb 			ret	
+
+?shutdown_com2@@ZAXXZ	ENDP
+	PUBLIC	?shutdown_com4@@ZAXXZ	; shutdown_com4
+?shutdown_com4@@ZAXXZ	PROC FAR	; shutdown_com4
+;|***   
+;|*** 
+;|*** void shutdown_com4(void)
+;|***   {
+; Line 656
+	*** 000a3b	c8 00 00 00 		enter	0,0
+	*** 000a3f	57 			push	di
+	*** 000a40	56 			push	si
+;|***   _disable();
+; Line 657
+	*** 000a41	9a 00 00 00 00 		call	FAR PTR __disable
+;|***   // disable com4 interrupts at the uart
+;|***   _outp( COM4_MCR, 0x00);
+; Line 659
+	*** 000a46	6a 00 			push	0
+	*** 000a48	68 ec 02 		push	748	;02ecH
+	*** 000a4b	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000a50	83 c4 04 		add	sp,4
+;|***   _outp( COM4_IER, 0x00);
+; Line 660
+	*** 000a53	6a 00 			push	0
+	*** 000a55	68 e9 02 		push	745	;02e9H
+	*** 000a58	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000a5d	83 c4 04 		add	sp,4
+;|***   // mask irq9 interrupts at pic
+;|***   _outp(0xa1, _inp(0xa1) | ~0xfd); 
+; Line 662
+	*** 000a60	68 a1 00 		push	161	;00a1H
+	*** 000a63	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000a68	83 c4 02 		add	sp,2
+	*** 000a6b	0d 02 ff 		or	ax,-254	;ff02H
+	*** 000a6e	50 			push	ax
+	*** 000a6f	68 a1 00 		push	161	;00a1H
+	*** 000a72	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000a77	83 c4 04 		add	sp,4
+;|***   // restore original COM4 vector
+;|***   _dos_setvect(9+0x70-8, com4_old_vector);
+; Line 664
+	*** 000a7a	ff 36 02 00 		push	WORD PTR ?com4_old_vector@@3P7AXXZE+2	;com4_old_vector
+	*** 000a7e	ff 36 00 00 		push	WORD PTR ?com4_old_vector@@3P7AXXZE	;com4_old_vector
+	*** 000a82	6a 71 			push	113	;0071H
+	*** 000a84	9a 00 00 00 00 		call	FAR PTR __dos_setvect
+	*** 000a89	83 c4 06 		add	sp,6
+;|***   _enable();
+; Line 665
+	*** 000a8c	9a 00 00 00 00 		call	FAR PTR __enable
+;|***   }
+; Line 666
+	*** 000a91	e9 00 00 		jmp	$EX2124
+					$EX2124:
+	*** 000a94	5e 			pop	si
+	*** 000a95	5f 			pop	di
+	*** 000a96	c9 			leave	
+	*** 000a97	cb 			ret	
+
+?shutdown_com4@@ZAXXZ	ENDP
+RS232_TEXT	ENDS
+END
+;|***   

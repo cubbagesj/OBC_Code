@@ -1,6 +1,6 @@
 ;	Static Name Aliases
 ;
-	TITLE   c:\cba\uio48.cpp
+	TITLE   c:\cb8\uio48.cpp
 	.286p
 INCLUDELIB      LLIBCE
 INCLUDELIB	OLDNAMES.LIB
@@ -14,6 +14,8 @@ _BSS	SEGMENT  WORD PUBLIC 'BSS'
 _BSS	ENDS
 DGROUP	GROUP	CONST, _BSS, _DATA
 	ASSUME DS: DGROUP, SS: DGROUP
+EXTRN	__inp:FAR
+EXTRN	__outp:FAR
 _BSS      SEGMENT
 PUBLIC  ?base_port@@3IE
 ?base_port@@3IE	DW 01H DUP (?)
@@ -99,93 +101,121 @@ UIO48_TEXT      SEGMENT
 ;|*** void init_io(unsigned io_address)
 ;|*** {
 ; Line 74
-	*** 000000	55 			push	bp
-	*** 000001	8b ec 			mov	bp,sp
-	*** 000003	57 			push	di
+	*** 000000	c8 02 00 00 		enter	2,0
+	*** 000004	57 			push	di
+	*** 000005	56 			push	si
+;	x = -2
 ;	io_address = 6
-;	register bx = x
 ;|*** int x;
 ;|*** 
 ;|***   /* Save the specified address for later use */
 ;|*** 
 ;|***   base_port = io_address;
 ; Line 79
-	*** 000004	8b 46 06 		mov	ax,WORD PTR [bp+6]	;io_address
-	*** 000007	a3 00 00 		mov	WORD PTR ?base_port@@3IE,ax	;base_port
+	*** 000006	8b 46 06 		mov	ax,WORD PTR [bp+6]	;io_address
+	*** 000009	a3 00 00 		mov	WORD PTR ?base_port@@3IE,ax	;base_port
 ;|*** 
 ;|***   /* Clear all of the I/O ports. This also makes them inputs */
 ;|*** 
 ;|***   for(x=0; x < 7; x++)
 ; Line 83
-	*** 00000a	33 db 			xor	bx,bx
+	*** 00000c	c7 46 fe 00 00 		mov	WORD PTR [bp-2],0	;x
+	*** 000011	e9 03 00 		jmp	$F724
+					$FC725:
+	*** 000014	ff 46 fe 		inc	WORD PTR [bp-2]	;x
 					$F724:
+	*** 000017	83 7e fe 07 		cmp	WORD PTR [bp-2],7	;x
+	*** 00001b	7c 03 			jl	$JCC27
+	*** 00001d	e9 15 00 		jmp	$FB726
+					$JCC27:
 ;|***     outportb(base_port+x, 0);
 ; Line 84
-	*** 00000c	33 c0 			xor	ax,ax
-	*** 00000e	8b 16 00 00 		mov	dx,WORD PTR ?base_port@@3IE	;base_port
-	*** 000012	03 d3 			add	dx,bx
-	*** 000014	ee 			out	dx, al
-
-	*** 000015	43 			inc	bx
-	*** 000016	83 fb 07 		cmp	bx,7
-	*** 000019	7c f1 			jl	$F724
-	*** 00001b	b9 06 00 		mov	cx,6
-	*** 00001e	bf 00 00 		mov	di,OFFSET DGROUP:?port_images@@3QIII	;port_images
-	*** 000021	1e 			push	ds
-	*** 000022	07 			pop	es
-	*** 000023	f3 			rep
-	*** 000024	ab 			stosw
+	*** 000020	6a 00 			push	0
+	*** 000022	8b 46 fe 		mov	ax,WORD PTR [bp-2]	;x
+	*** 000025	03 06 00 00 		add	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 000029	50 			push	ax
+	*** 00002a	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 00002f	83 c4 04 		add	sp,4
+	*** 000032	e9 df ff 		jmp	$FC725
+					$FB726:
 ;|*** 
 ;|***   /* Clear our image values as well */
 ;|*** 
 ;|***   for(x=0; x < 6; x++)
+; Line 88
+	*** 000035	c7 46 fe 00 00 		mov	WORD PTR [bp-2],0	;x
+	*** 00003a	e9 03 00 		jmp	$F727
+					$FC728:
+	*** 00003d	ff 46 fe 		inc	WORD PTR [bp-2]	;x
+					$F727:
+	*** 000040	83 7e fe 06 		cmp	WORD PTR [bp-2],6	;x
+	*** 000044	7c 03 			jl	$JCC68
+	*** 000046	e9 0e 00 		jmp	$FB729
+					$JCC68:
 ;|***     port_images[x] = 0;
+; Line 89
+	*** 000049	8b 5e fe 		mov	bx,WORD PTR [bp-2]	;x
+	*** 00004c	d1 e3 			shl	bx,1
+	*** 00004e	c7 87 00 00 00 00 	mov	WORD PTR ?port_images@@3QIII[bx],0	;port_images
+	*** 000054	e9 e6 ff 		jmp	$FC728
+					$FB729:
 ;|*** 
 ;|***   /* Set page 2 access, for interrupt enables */
 ;|*** 
 ;|***   outportb(base_port+7,0x80);
 ; Line 93
-	*** 000025	b8 80 00 		mov	ax,128	;0080H
-	*** 000028	8b 16 00 00 		mov	dx,WORD PTR ?base_port@@3IE	;base_port
-	*** 00002c	83 c2 07 		add	dx,7
-	*** 00002f	ee 			out	dx, al
-
+	*** 000057	68 80 00 		push	128	;0080H
+	*** 00005a	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 00005d	05 07 00 		add	ax,7
+	*** 000060	50 			push	ax
+	*** 000061	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000066	83 c4 04 		add	sp,4
 ;|*** 
 ;|***   /* Clear all interrupt enables */
 ;|***   
 ;|***   outportb(base_port+8,0);
 ; Line 97
-	*** 000030	33 c0 			xor	ax,ax
-	*** 000032	8b ca 			mov	cx,dx
-	*** 000034	8b 16 00 00 		mov	dx,WORD PTR ?base_port@@3IE	;base_port
-	*** 000038	83 c2 08 		add	dx,8
-	*** 00003b	ee 			out	dx, al
-
+	*** 000069	6a 00 			push	0
+	*** 00006b	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 00006e	05 08 00 		add	ax,8
+	*** 000071	50 			push	ax
+	*** 000072	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000077	83 c4 04 		add	sp,4
 ;|***   outportb(base_port+9,0);
 ; Line 98
-	*** 00003c	8b 16 00 00 		mov	dx,WORD PTR ?base_port@@3IE	;base_port
-	*** 000040	83 c2 09 		add	dx,9
-	*** 000043	ee 			out	dx, al
-
+	*** 00007a	6a 00 			push	0
+	*** 00007c	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 00007f	05 09 00 		add	ax,9
+	*** 000082	50 			push	ax
+	*** 000083	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000088	83 c4 04 		add	sp,4
 ;|***   outportb(base_port+0x0a,0);
 ; Line 99
-	*** 000044	8b 16 00 00 		mov	dx,WORD PTR ?base_port@@3IE	;base_port
-	*** 000048	83 c2 0a 		add	dx,10	;000aH
-	*** 00004b	ee 			out	dx, al
-
+	*** 00008b	6a 00 			push	0
+	*** 00008d	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 000090	05 0a 00 		add	ax,10	;000aH
+	*** 000093	50 			push	ax
+	*** 000094	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000099	83 c4 04 		add	sp,4
 ;|*** 
 ;|***   /* Restore normal page 0 register access */
 ;|***   outportb(base_port+7,0);
 ; Line 102
-	*** 00004c	8b d1 			mov	dx,cx
-	*** 00004e	ee 			out	dx, al
-
+	*** 00009c	6a 00 			push	0
+	*** 00009e	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 0000a1	05 07 00 		add	ax,7
+	*** 0000a4	50 			push	ax
+	*** 0000a5	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 0000aa	83 c4 04 		add	sp,4
 ;|*** 
 ;|*** }
 ; Line 104
-	*** 00004f	5f 			pop	di
-	*** 000050	c9 			leave	
-	*** 000051	cb 			ret	
+	*** 0000ad	e9 00 00 		jmp	$EX722
+					$EX722:
+	*** 0000b0	5e 			pop	si
+	*** 0000b1	5f 			pop	di
+	*** 0000b2	c9 			leave	
+	*** 0000b3	cb 			ret	
 
 ?init_io@@ZAXI@Z	ENDP
 	PUBLIC	?read_bit@@ZAHH@Z	; read_bit
@@ -212,13 +242,12 @@ UIO48_TEXT      SEGMENT
 ;|*** int read_bit(int bit_number)
 ;|*** {
 ; Line 125
-	*** 000052	55 			push	bp
-	*** 000053	8b ec 			mov	bp,sp
-	*** 000055	57 			push	di
-;	bit_number = 6
+	*** 0000b4	c8 04 00 00 		enter	4,0
+	*** 0000b8	57 			push	di
+	*** 0000b9	56 			push	si
 ;	port = -2
-;	register di = val
-	*** 000056	8b 5e 06 		mov	bx,WORD PTR [bp+6]	;bit_number
+;	val = -4
+;	bit_number = 6
 ;|*** unsigned port;
 ;|*** int val;
 ;|*** 
@@ -226,54 +255,67 @@ UIO48_TEXT      SEGMENT
 ;|*** 
 ;|***   --bit_number;
 ; Line 131
-	*** 000059	4b 			dec	bx
+	*** 0000ba	ff 4e 06 		dec	WORD PTR [bp+6]	;bit_number
 ;|*** 
 ;|***   /* Calculate the I/O port address based on the updated bit_number */
 ;|*** 
 ;|***   port = (bit_number / 8) + base_port;
+; Line 135
+	*** 0000bd	8b 46 06 		mov	ax,WORD PTR [bp+6]	;bit_number
+	*** 0000c0	99 			cwd	
+	*** 0000c1	83 e2 07 		and	dx,7
+	*** 0000c4	03 c2 			add	ax,dx
+	*** 0000c6	c1 f8 03 		sar	ax,3
+	*** 0000c9	03 06 00 00 		add	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 0000cd	89 46 fe 		mov	WORD PTR [bp-2],ax	;port
 ;|*** 
 ;|***   /* Get the current contents of the port */
 ;|*** 
 ;|***   val = inportb(port);
 ; Line 139
-	*** 00005a	8b c3 			mov	ax,bx
-	*** 00005c	99 			cwd	
-	*** 00005d	83 e2 07 		and	dx,7
-	*** 000060	03 c2 			add	ax,dx
-	*** 000062	c1 f8 03 		sar	ax,3
-	*** 000065	8b d0 			mov	dx,ax
-	*** 000067	03 16 00 00 		add	dx,WORD PTR ?base_port@@3IE	;base_port
-	*** 00006b	ec 			in	al,dx
-	*** 00006c	2a e4 			sub	ah,ah
-	*** 00006e	8b f8 			mov	di,ax
+	*** 0000d0	ff 76 fe 		push	WORD PTR [bp-2]	;port
+	*** 0000d3	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0000d8	83 c4 02 		add	sp,2
+	*** 0000db	89 46 fc 		mov	WORD PTR [bp-4],ax	;val
 ;|*** 
 ;|***   /* Get just the bit we specified */
 ;|*** 
 ;|***   val = val & (1 << (bit_number % 8));
+; Line 143
+	*** 0000de	8b 46 06 		mov	ax,WORD PTR [bp+6]	;bit_number
+	*** 0000e1	b9 08 00 		mov	cx,8
+	*** 0000e4	99 			cwd	
+	*** 0000e5	f7 f9 			idiv	cx
+	*** 0000e7	8b ca 			mov	cx,dx
+	*** 0000e9	b8 01 00 		mov	ax,1
+	*** 0000ec	d3 e0 			shl	ax,cl
+	*** 0000ee	21 46 fc 		and	WORD PTR [bp-4],ax	;val
 ;|***   
 ;|***   /* Adjust the return for a 0 or 1 value */
 ;|*** 
 ;|***   if(val)
 ; Line 147
-	*** 000070	8b c3 			mov	ax,bx
-	*** 000072	b9 08 00 		mov	cx,8
-	*** 000075	99 			cwd	
-	*** 000076	f7 f9 			idiv	cx
-	*** 000078	8b ca 			mov	cx,dx
-	*** 00007a	b8 01 00 		mov	ax,1
-	*** 00007d	d3 e0 			shl	ax,cl
-	*** 00007f	23 c7 			and	ax,di
-	*** 000081	3d 01 00 		cmp	ax,1
-	*** 000084	1b c0 			sbb	ax,ax
-	*** 000086	40 			inc	ax
+	*** 0000f1	83 7e fc 00 		cmp	WORD PTR [bp-4],0	;val
+	*** 0000f5	75 03 			jne	$JCC245
+	*** 0000f7	e9 06 00 		jmp	$I734
+					$JCC245:
 ;|***     return 1;
+; Line 148
+	*** 0000fa	b8 01 00 		mov	ax,1
+	*** 0000fd	e9 06 00 		jmp	$EX731
 ;|*** 
 ;|***   return 0;
+; Line 150
+					$I734:
+	*** 000100	b8 00 00 		mov	ax,0
+	*** 000103	e9 00 00 		jmp	$EX731
 ;|*** }
 ; Line 151
-	*** 000087	5f 			pop	di
-	*** 000088	c9 			leave	
-	*** 000089	cb 			ret	
+					$EX731:
+	*** 000106	5e 			pop	si
+	*** 000107	5f 			pop	di
+	*** 000108	c9 			leave	
+	*** 000109	cb 			ret	
 
 ?read_bit@@ZAHH@Z	ENDP
 	PUBLIC	?write_bit@@ZAXHH@Z	; write_bit
@@ -298,12 +340,14 @@ UIO48_TEXT      SEGMENT
 ;|*** void write_bit(int bit_number, int val)
 ;|*** {
 ; Line 170
-	*** 00008a	c8 06 00 00 		enter	6,0
-;	bit_number = 6
+	*** 00010a	c8 06 00 00 		enter	6,0
+	*** 00010e	57 			push	di
+	*** 00010f	56 			push	si
+;	port = -2
+;	temp = -4
+;	mask = -6
 ;	val = 8
-;	port = -4
-;	temp = -2
-;	register bx = mask
+;	bit_number = 6
 ;|*** unsigned port;
 ;|*** unsigned temp;
 ;|*** unsigned mask;
@@ -312,84 +356,101 @@ UIO48_TEXT      SEGMENT
 ;|***   /* Adjust bit_number for 0 based numbering */
 ;|*** 
 ;|***   --bit_number;
+; Line 178
+	*** 000110	ff 4e 06 		dec	WORD PTR [bp+6]	;bit_number
 ;|*** 
 ;|***   /* Calculate the I/O address of the port based on the bit number */
 ;|*** 
 ;|***   port = (bit_number / 8) + base_port;
 ; Line 182
-	*** 00008e	ff 4e 06 		dec	WORD PTR [bp+6]	;bit_number
-	*** 000091	8b 46 06 		mov	ax,WORD PTR [bp+6]	;bit_number
-	*** 000094	99 			cwd	
-	*** 000095	83 e2 07 		and	dx,7
-	*** 000098	03 c2 			add	ax,dx
-	*** 00009a	c1 f8 03 		sar	ax,3
-	*** 00009d	8b c8 			mov	cx,ax
-	*** 00009f	03 06 00 00 		add	ax,WORD PTR ?base_port@@3IE	;base_port
-	*** 0000a3	89 46 fc 		mov	WORD PTR [bp-4],ax	;port
+	*** 000113	8b 46 06 		mov	ax,WORD PTR [bp+6]	;bit_number
+	*** 000116	99 			cwd	
+	*** 000117	83 e2 07 		and	dx,7
+	*** 00011a	03 c2 			add	ax,dx
+	*** 00011c	c1 f8 03 		sar	ax,3
+	*** 00011f	03 06 00 00 		add	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 000123	89 46 fe 		mov	WORD PTR [bp-2],ax	;port
 ;|*** 
 ;|***   /* Use the image value to avoid having to read the port first. */
 ;|*** 
 ;|***   temp = port_images[bit_number / 8]; /* Get current value */
 ; Line 186
-	*** 0000a6	8b d9 			mov	bx,cx
-	*** 0000a8	03 d9 			add	bx,cx
-	*** 0000aa	81 c3 00 00 		add	bx,OFFSET DGROUP:?port_images@@3QIII	;port_images
-	*** 0000ae	89 5e fa 		mov	WORD PTR [bp-6],bx
-	*** 0000b1	8b 07 			mov	ax,WORD PTR [bx]
-	*** 0000b3	89 46 fe 		mov	WORD PTR [bp-2],ax	;temp
+	*** 000126	8b 46 06 		mov	ax,WORD PTR [bp+6]	;bit_number
+	*** 000129	99 			cwd	
+	*** 00012a	83 e2 07 		and	dx,7
+	*** 00012d	03 c2 			add	ax,dx
+	*** 00012f	c1 f8 03 		sar	ax,3
+	*** 000132	8b d8 			mov	bx,ax
+	*** 000134	d1 e3 			shl	bx,1
+	*** 000136	8b 87 00 00 		mov	ax,WORD PTR ?port_images@@3QIII[bx]	;port_images
+	*** 00013a	89 46 fc 		mov	WORD PTR [bp-4],ax	;temp
 ;|*** 
 ;|***   /* Calculate a bit mask for the specified bit */
 ;|*** 
 ;|***   mask = (1 << (bit_number % 8));
 ; Line 190
-	*** 0000b6	bb 01 00 		mov	bx,1
-	*** 0000b9	8b 46 06 		mov	ax,WORD PTR [bp+6]	;bit_number
-	*** 0000bc	b9 08 00 		mov	cx,8
-	*** 0000bf	99 			cwd	
-	*** 0000c0	f7 f9 			idiv	cx
-	*** 0000c2	8b ca 			mov	cx,dx
-	*** 0000c4	d3 e3 			shl	bx,cl
+	*** 00013d	8b 46 06 		mov	ax,WORD PTR [bp+6]	;bit_number
+	*** 000140	b9 08 00 		mov	cx,8
+	*** 000143	99 			cwd	
+	*** 000144	f7 f9 			idiv	cx
+	*** 000146	8b ca 			mov	cx,dx
+	*** 000148	b8 01 00 		mov	ax,1
+	*** 00014b	d3 e0 			shl	ax,cl
+	*** 00014d	89 46 fa 		mov	WORD PTR [bp-6],ax	;mask
 ;|*** 
 ;|***   /* Check whether the request was to set or clear and mask accordingly */
 ;|*** 
 ;|***   if(val)   /* If the bit is to be set */
 ; Line 194
-	*** 0000c6	83 7e 08 00 		cmp	WORD PTR [bp+8],0	;val
-	*** 0000ca	74 06 			je	$I741
+	*** 000150	83 7e 08 00 		cmp	WORD PTR [bp+8],0	;val
+	*** 000154	75 03 			jne	$JCC340
+	*** 000156	e9 09 00 		jmp	$I741
+					$JCC340:
 ;|***     temp = temp | mask;
 ; Line 195
-	*** 0000cc	09 5e fe 		or	WORD PTR [bp-2],bx	;temp
+	*** 000159	8b 46 fa 		mov	ax,WORD PTR [bp-6]	;mask
+	*** 00015c	09 46 fc 		or	WORD PTR [bp-4],ax	;temp
 ;|***   else
 ; Line 196
-	*** 0000cf	eb 06 			jmp	SHORT $I742
-	*** 0000d1	90 			nop	
+	*** 00015f	e9 08 00 		jmp	$I742
 					$I741:
 ;|***     temp = temp & ~mask;
 ; Line 197
-	*** 0000d2	f7 d3 			not	bx
-	*** 0000d4	21 5e fe 		and	WORD PTR [bp-2],bx	;temp
+	*** 000162	8b 46 fa 		mov	ax,WORD PTR [bp-6]	;mask
+	*** 000165	f7 d0 			not	ax
+	*** 000167	21 46 fc 		and	WORD PTR [bp-4],ax	;temp
 					$I742:
 ;|***   
 ;|***   /* Update the image value with the value we're about to write */
 ;|*** 
 ;|***   port_images[bit_number / 8] = temp;
 ; Line 201
-	*** 0000d7	8b 5e fa 		mov	bx,WORD PTR [bp-6]
-	*** 0000da	8b 46 fe 		mov	ax,WORD PTR [bp-2]	;temp
-	*** 0000dd	89 07 			mov	WORD PTR [bx],ax
+	*** 00016a	8b 46 06 		mov	ax,WORD PTR [bp+6]	;bit_number
+	*** 00016d	99 			cwd	
+	*** 00016e	83 e2 07 		and	dx,7
+	*** 000171	03 c2 			add	ax,dx
+	*** 000173	c1 f8 03 		sar	ax,3
+	*** 000176	8b d8 			mov	bx,ax
+	*** 000178	d1 e3 			shl	bx,1
+	*** 00017a	8b 46 fc 		mov	ax,WORD PTR [bp-4]	;temp
+	*** 00017d	89 87 00 00 		mov	WORD PTR ?port_images@@3QIII[bx],ax	;port_images
 ;|*** 
 ;|***   /* Now actually update the port. Only the specified bit is affected */
 ;|*** 
 ;|***   outportb(port,temp);
 ; Line 205
-	*** 0000df	8b 56 fc 		mov	dx,WORD PTR [bp-4]	;port
-	*** 0000e2	ee 			out	dx, al
-
+	*** 000181	ff 76 fc 		push	WORD PTR [bp-4]	;temp
+	*** 000184	ff 76 fe 		push	WORD PTR [bp-2]	;port
+	*** 000187	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 00018c	83 c4 04 		add	sp,4
 ;|*** }
 ; Line 206
-	*** 0000e3	c9 			leave	
-	*** 0000e4	cb 			ret	
-	*** 0000e5	90 			nop	
+	*** 00018f	e9 00 00 		jmp	$EX737
+					$EX737:
+	*** 000192	5e 			pop	si
+	*** 000193	5f 			pop	di
+	*** 000194	c9 			leave	
+	*** 000195	cb 			ret	
 
 ?write_bit@@ZAXHH@Z	ENDP
 	PUBLIC	?set_bit@@ZAXH@Z	; set_bit
@@ -410,20 +471,25 @@ UIO48_TEXT      SEGMENT
 ;|*** void set_bit(int bit_number)
 ;|*** {
 ; Line 221
-	*** 0000e6	55 			push	bp
-	*** 0000e7	8b ec 			mov	bp,sp
+	*** 000196	c8 00 00 00 		enter	0,0
+	*** 00019a	57 			push	di
+	*** 00019b	56 			push	si
 ;	bit_number = 6
 ;|*** 
 ;|***   write_bit(bit_number,1);
 ; Line 223
-	*** 0000e9	6a 01 			push	1
-	*** 0000eb	ff 76 06 		push	WORD PTR [bp+6]	;bit_number
-	*** 0000ee	0e 			push	cs
-	*** 0000ef	e8 00 00 		call	NEAR PTR ?write_bit@@ZAXHH@Z	; write_bit
+	*** 00019c	6a 01 			push	1
+	*** 00019e	ff 76 06 		push	WORD PTR [bp+6]	;bit_number
+	*** 0001a1	9a 00 00 00 00 		call	FAR PTR ?write_bit@@ZAXHH@Z	; write_bit
+	*** 0001a6	83 c4 04 		add	sp,4
 ;|*** }
 ; Line 224
-	*** 0000f2	c9 			leave	
-	*** 0000f3	cb 			ret	
+	*** 0001a9	e9 00 00 		jmp	$EX744
+					$EX744:
+	*** 0001ac	5e 			pop	si
+	*** 0001ad	5f 			pop	di
+	*** 0001ae	c9 			leave	
+	*** 0001af	cb 			ret	
 
 ?set_bit@@ZAXH@Z	ENDP
 	PUBLIC	?clr_bit@@ZAXH@Z	; clr_bit
@@ -444,19 +510,24 @@ UIO48_TEXT      SEGMENT
 ;|*** void clr_bit(int bit_number)
 ;|*** {
 ; Line 239
-	*** 0000f4	55 			push	bp
-	*** 0000f5	8b ec 			mov	bp,sp
+	*** 0001b0	c8 00 00 00 		enter	0,0
+	*** 0001b4	57 			push	di
+	*** 0001b5	56 			push	si
 ;	bit_number = 6
 ;|***   write_bit(bit_number,0);
 ; Line 240
-	*** 0000f7	6a 00 			push	0
-	*** 0000f9	ff 76 06 		push	WORD PTR [bp+6]	;bit_number
-	*** 0000fc	0e 			push	cs
-	*** 0000fd	e8 00 00 		call	NEAR PTR ?write_bit@@ZAXHH@Z	; write_bit
+	*** 0001b6	6a 00 			push	0
+	*** 0001b8	ff 76 06 		push	WORD PTR [bp+6]	;bit_number
+	*** 0001bb	9a 00 00 00 00 		call	FAR PTR ?write_bit@@ZAXHH@Z	; write_bit
+	*** 0001c0	83 c4 04 		add	sp,4
 ;|*** }
 ; Line 241
-	*** 000100	c9 			leave	
-	*** 000101	cb 			ret	
+	*** 0001c3	e9 00 00 		jmp	$EX746
+					$EX746:
+	*** 0001c6	5e 			pop	si
+	*** 0001c7	5f 			pop	di
+	*** 0001c8	c9 			leave	
+	*** 0001c9	cb 			ret	
 
 ?clr_bit@@ZAXH@Z	ENDP
 	PUBLIC	?enab_int@@ZAXHH@Z	; enab_int
@@ -483,14 +554,14 @@ UIO48_TEXT      SEGMENT
 ;|*** void enab_int(int bit_number, int polarity)
 ;|*** {
 ; Line 262
-	*** 000102	c8 04 00 00 		enter	4,0
-	*** 000106	57 			push	di
-;	bit_number = 6
+	*** 0001ca	c8 06 00 00 		enter	6,0
+	*** 0001ce	57 			push	di
+	*** 0001cf	56 			push	si
+;	port = -2
+;	temp = -4
+;	mask = -6
 ;	polarity = 8
-;	port = -4
-;	temp = -2
-;	register bx = mask
-	*** 000107	8b 7e 06 		mov	di,WORD PTR [bp+6]	;bit_number
+;	bit_number = 6
 ;|*** unsigned port;
 ;|*** unsigned temp;
 ;|*** unsigned mask;
@@ -498,127 +569,142 @@ UIO48_TEXT      SEGMENT
 ;|***   /* Adjust for 0 based numbering */ 
 ;|***   
 ;|***   --bit_number;
+; Line 269
+	*** 0001d0	ff 4e 06 		dec	WORD PTR [bp+6]	;bit_number
 ;|*** 
 ;|***   /* Calculate the I/O address based uppon the bit number */
 ;|*** 
 ;|***   port = (bit_number / 8) + base_port + 8;
 ; Line 273
-	*** 00010a	8d 45 ff 		lea	ax,WORD PTR [di-1]
-	*** 00010d	8b c8 			mov	cx,ax
-	*** 00010f	99 			cwd	
-	*** 000110	83 e2 07 		and	dx,7
-	*** 000113	03 c2 			add	ax,dx
-	*** 000115	c1 f8 03 		sar	ax,3
-	*** 000118	03 06 00 00 		add	ax,WORD PTR ?base_port@@3IE	;base_port
-	*** 00011c	05 08 00 		add	ax,8
-	*** 00011f	89 46 fc 		mov	WORD PTR [bp-4],ax	;port
+	*** 0001d3	8b 46 06 		mov	ax,WORD PTR [bp+6]	;bit_number
+	*** 0001d6	99 			cwd	
+	*** 0001d7	83 e2 07 		and	dx,7
+	*** 0001da	03 c2 			add	ax,dx
+	*** 0001dc	c1 f8 03 		sar	ax,3
+	*** 0001df	03 06 00 00 		add	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 0001e3	05 08 00 		add	ax,8
+	*** 0001e6	89 46 fe 		mov	WORD PTR [bp-2],ax	;port
 ;|*** 
 ;|***   /* Calculate a bit mask based on the specified bit number */
 ;|*** 
 ;|***   mask = (1 << (bit_number % 8));
 ; Line 277
-	*** 000122	bb 01 00 		mov	bx,1
-	*** 000125	8b c1 			mov	ax,cx
-	*** 000127	b9 08 00 		mov	cx,8
-	*** 00012a	99 			cwd	
-	*** 00012b	f7 f9 			idiv	cx
-	*** 00012d	8b ca 			mov	cx,dx
-	*** 00012f	d3 e3 			shl	bx,cl
+	*** 0001e9	8b 46 06 		mov	ax,WORD PTR [bp+6]	;bit_number
+	*** 0001ec	b9 08 00 		mov	cx,8
+	*** 0001ef	99 			cwd	
+	*** 0001f0	f7 f9 			idiv	cx
+	*** 0001f2	8b ca 			mov	cx,dx
+	*** 0001f4	b8 01 00 		mov	ax,1
+	*** 0001f7	d3 e0 			shl	ax,cl
+	*** 0001f9	89 46 fa 		mov	WORD PTR [bp-6],ax	;mask
 ;|*** 
 ;|***   /* Turn on page 2 access */
 ;|*** 
 ;|***   outportb(base_port+7,0x80);
 ; Line 281
-	*** 000131	b8 80 00 		mov	ax,128	;0080H
-	*** 000134	8b 16 00 00 		mov	dx,WORD PTR ?base_port@@3IE	;base_port
-	*** 000138	83 c2 07 		add	dx,7
-	*** 00013b	ee 			out	dx, al
-
+	*** 0001fc	68 80 00 		push	128	;0080H
+	*** 0001ff	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 000202	05 07 00 		add	ax,7
+	*** 000205	50 			push	ax
+	*** 000206	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 00020b	83 c4 04 		add	sp,4
 ;|*** 
 ;|***   /* Get the current state of the interrupt enable register */
 ;|*** 
 ;|***   temp = inportb(port);
 ; Line 285
-	*** 00013c	8b c2 			mov	ax,dx
-	*** 00013e	8b 56 fc 		mov	dx,WORD PTR [bp-4]	;port
-	*** 000141	8b c8 			mov	cx,ax
-	*** 000143	ec 			in	al,dx
-	*** 000144	2a e4 			sub	ah,ah
-	*** 000146	89 46 fe 		mov	WORD PTR [bp-2],ax	;temp
+	*** 00020e	ff 76 fe 		push	WORD PTR [bp-2]	;port
+	*** 000211	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000216	83 c4 02 		add	sp,2
+	*** 000219	89 46 fc 		mov	WORD PTR [bp-4],ax	;temp
 ;|*** 
 ;|***   /* Set the enable bit for our bit number */
 ;|*** 
 ;|***   temp = temp | mask;
 ; Line 289
-	*** 000149	09 5e fe 		or	WORD PTR [bp-2],bx	;temp
+	*** 00021c	8b 46 fa 		mov	ax,WORD PTR [bp-6]	;mask
+	*** 00021f	09 46 fc 		or	WORD PTR [bp-4],ax	;temp
 ;|*** 
 ;|***   /* Now update the interrupt enable register */
 ;|*** 
 ;|***   outportb(port,temp);
 ; Line 293
-	*** 00014c	8b 46 fe 		mov	ax,WORD PTR [bp-2]	;temp
-	*** 00014f	ee 			out	dx, al
-
+	*** 000222	ff 76 fc 		push	WORD PTR [bp-4]	;temp
+	*** 000225	ff 76 fe 		push	WORD PTR [bp-2]	;port
+	*** 000228	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 00022d	83 c4 04 		add	sp,4
 ;|*** 
 ;|***   /* Turn on access to page 1 for polarity control */
 ;|*** 
 ;|***   outportb(base_port+7,0x40);
 ; Line 297
-	*** 000150	b8 40 00 		mov	ax,64	;0040H
-	*** 000153	8b d1 			mov	dx,cx
-	*** 000155	ee 			out	dx, al
-
+	*** 000230	6a 40 			push	64	;0040H
+	*** 000232	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 000235	05 07 00 		add	ax,7
+	*** 000238	50 			push	ax
+	*** 000239	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 00023e	83 c4 04 		add	sp,4
 ;|*** 
 ;|***   /* Get the current state of the polarity register */
 ;|*** 
 ;|***   temp = inportb(port);   /* Get current polarity settings */
 ; Line 301
-	*** 000156	8b 56 fc 		mov	dx,WORD PTR [bp-4]	;port
-	*** 000159	ec 			in	al,dx
-	*** 00015a	89 46 fe 		mov	WORD PTR [bp-2],ax	;temp
+	*** 000241	ff 76 fe 		push	WORD PTR [bp-2]	;port
+	*** 000244	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000249	83 c4 02 		add	sp,2
+	*** 00024c	89 46 fc 		mov	WORD PTR [bp-4],ax	;temp
 ;|*** 
 ;|***   /* Set the polarity according to the argument in the image value */
 ;|*** 
 ;|***   if(polarity)    /* If the bit is to be set */
 ; Line 305
-	*** 00015d	83 7e 08 00 		cmp	WORD PTR [bp+8],0	;polarity
-	*** 000161	74 05 			je	$I753
+	*** 00024f	83 7e 08 00 		cmp	WORD PTR [bp+8],0	;polarity
+	*** 000253	75 03 			jne	$JCC595
+	*** 000255	e9 09 00 		jmp	$I753
+					$JCC595:
 ;|***     temp = temp | mask;
 ; Line 306
-	*** 000163	09 5e fe 		or	WORD PTR [bp-2],bx	;temp
+	*** 000258	8b 46 fa 		mov	ax,WORD PTR [bp-6]	;mask
+	*** 00025b	09 46 fc 		or	WORD PTR [bp-4],ax	;temp
 ;|***   else
 ; Line 307
-	*** 000166	eb 05 			jmp	SHORT $I754
+	*** 00025e	e9 08 00 		jmp	$I754
 					$I753:
 ;|***     temp = temp & ~mask;
 ; Line 308
-	*** 000168	f7 d3 			not	bx
-	*** 00016a	21 5e fe 		and	WORD PTR [bp-2],bx	;temp
+	*** 000261	8b 46 fa 		mov	ax,WORD PTR [bp-6]	;mask
+	*** 000264	f7 d0 			not	ax
+	*** 000266	21 46 fc 		and	WORD PTR [bp-4],ax	;temp
 					$I754:
 ;|***   
 ;|***   /* Write out the new polarity value */
 ;|*** 
 ;|***   outportb(port,temp);
 ; Line 312
-	*** 00016d	8b 46 fe 		mov	ax,WORD PTR [bp-2]	;temp
-	*** 000170	ee 			out	dx, al
-
+	*** 000269	ff 76 fc 		push	WORD PTR [bp-4]	;temp
+	*** 00026c	ff 76 fe 		push	WORD PTR [bp-2]	;port
+	*** 00026f	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000274	83 c4 04 		add	sp,4
 ;|*** 
 ;|***   /* Set access back to Page 0 */
 ;|*** 
 ;|***   outportb(base_port+7,0x0);
 ; Line 316
-	*** 000171	33 c0 			xor	ax,ax
-	*** 000173	8b 16 00 00 		mov	dx,WORD PTR ?base_port@@3IE	;base_port
-	*** 000177	83 c2 07 		add	dx,7
-	*** 00017a	ee 			out	dx, al
-
+	*** 000277	6a 00 			push	0
+	*** 000279	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 00027c	05 07 00 		add	ax,7
+	*** 00027f	50 			push	ax
+	*** 000280	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000285	83 c4 04 		add	sp,4
 ;|*** 
 ;|*** }
 ; Line 318
-	*** 00017b	5f 			pop	di
-	*** 00017c	c9 			leave	
-	*** 00017d	cb 			ret	
+	*** 000288	e9 00 00 		jmp	$EX749
+					$EX749:
+	*** 00028b	5e 			pop	si
+	*** 00028c	5f 			pop	di
+	*** 00028d	c9 			leave	
+	*** 00028e	cb 			ret	
 
 ?enab_int@@ZAXHH@Z	ENDP
 	PUBLIC	?disab_int@@ZAXH@Z	; disab_int
@@ -639,15 +725,13 @@ UIO48_TEXT      SEGMENT
 ;|*** void disab_int(int bit_number)
 ;|*** {
 ; Line 333
-	*** 00017e	55 			push	bp
-	*** 00017f	8b ec 			mov	bp,sp
-	*** 000181	57 			push	di
-	*** 000182	56 			push	si
-;	bit_number = 6
+	*** 00028f	c8 06 00 00 		enter	6,0
+	*** 000293	57 			push	di
+	*** 000294	56 			push	si
 ;	port = -2
-;	register bx = temp
+;	temp = -4
 ;	mask = -6
-	*** 000183	8b 7e 06 		mov	di,WORD PTR [bp+6]	;bit_number
+;	bit_number = 6
 ;|*** unsigned port;
 ;|*** unsigned temp;
 ;|*** unsigned mask;
@@ -656,87 +740,90 @@ UIO48_TEXT      SEGMENT
 ;|***  
 ;|***   --bit_number;
 ; Line 340
-	*** 000186	4f 			dec	di
+	*** 000295	ff 4e 06 		dec	WORD PTR [bp+6]	;bit_number
 ;|*** 
 ;|***   /* Calculate the I/O Address for the enable port */
 ;|*** 
 ;|***   port = (bit_number / 8) + base_port + 8;
+; Line 344
+	*** 000298	8b 46 06 		mov	ax,WORD PTR [bp+6]	;bit_number
+	*** 00029b	99 			cwd	
+	*** 00029c	83 e2 07 		and	dx,7
+	*** 00029f	03 c2 			add	ax,dx
+	*** 0002a1	c1 f8 03 		sar	ax,3
+	*** 0002a4	03 06 00 00 		add	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 0002a8	05 08 00 		add	ax,8
+	*** 0002ab	89 46 fe 		mov	WORD PTR [bp-2],ax	;port
 ;|*** 
 ;|***   /* Calculate the proper bit mask for this bit number */
 ;|*** 
 ;|***   mask = (1 << (bit_number % 8));
+; Line 348
+	*** 0002ae	8b 46 06 		mov	ax,WORD PTR [bp+6]	;bit_number
+	*** 0002b1	b9 08 00 		mov	cx,8
+	*** 0002b4	99 			cwd	
+	*** 0002b5	f7 f9 			idiv	cx
+	*** 0002b7	8b ca 			mov	cx,dx
+	*** 0002b9	b8 01 00 		mov	ax,1
+	*** 0002bc	d3 e0 			shl	ax,cl
+	*** 0002be	89 46 fa 		mov	WORD PTR [bp-6],ax	;mask
 ;|*** 
 ;|***   /* Turn on access to page 2 registers */
 ;|*** 
 ;|***   outportb(base_port+7,0x80);
 ; Line 352
-	*** 000187	b8 80 00 		mov	ax,128	;0080H
-	*** 00018a	8b 16 00 00 		mov	dx,WORD PTR ?base_port@@3IE	;base_port
-	*** 00018e	83 c2 07 		add	dx,7
-	*** 000191	ee 			out	dx, al
-
+	*** 0002c1	68 80 00 		push	128	;0080H
+	*** 0002c4	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 0002c7	05 07 00 		add	ax,7
+	*** 0002ca	50 			push	ax
+	*** 0002cb	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 0002d0	83 c4 04 		add	sp,4
 ;|*** 
 ;|***   /* Get the current state of the enable register */
 ;|*** 
 ;|***   temp = inportb(port);
 ; Line 356
-	*** 000192	8b c7 			mov	ax,di
-	*** 000194	8b ca 			mov	cx,dx
-	*** 000196	8b df 			mov	bx,di
-	*** 000198	99 			cwd	
-	*** 000199	83 e2 07 		and	dx,7
-	*** 00019c	03 c2 			add	ax,dx
-	*** 00019e	c1 f8 03 		sar	ax,3
-	*** 0001a1	8b d0 			mov	dx,ax
-	*** 0001a3	03 16 00 00 		add	dx,WORD PTR ?base_port@@3IE	;base_port
-	*** 0001a7	83 c2 08 		add	dx,8
-	*** 0001aa	ec 			in	al,dx
-	*** 0001ab	8b f7 			mov	si,di
-	*** 0001ad	8a d8 			mov	bl,al
-	*** 0001af	2a ff 			sub	bh,bh
+	*** 0002d3	ff 76 fe 		push	WORD PTR [bp-2]	;port
+	*** 0002d6	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0002db	83 c4 02 		add	sp,2
+	*** 0002de	89 46 fc 		mov	WORD PTR [bp-4],ax	;temp
 ;|*** 
 ;|***   /* Clear the enable bit int the image for our bit number */
 ;|*** 
 ;|***   temp = temp & ~mask;
 ; Line 360
-	*** 0001b1	8b fa 			mov	di,dx
-	*** 0001b3	8b c6 			mov	ax,si
-	*** 0001b5	ba 08 00 		mov	dx,8
-	*** 0001b8	8b f2 			mov	si,dx
-	*** 0001ba	99 			cwd	
-	*** 0001bb	f7 fe 			idiv	si
-	*** 0001bd	8b c1 			mov	ax,cx
-	*** 0001bf	8b ca 			mov	cx,dx
-	*** 0001c1	ba 01 00 		mov	dx,1
-	*** 0001c4	d3 e2 			shl	dx,cl
-	*** 0001c6	f7 d2 			not	dx
-	*** 0001c8	23 da 			and	bx,dx
+	*** 0002e1	8b 46 fa 		mov	ax,WORD PTR [bp-6]	;mask
+	*** 0002e4	f7 d0 			not	ax
+	*** 0002e6	21 46 fc 		and	WORD PTR [bp-4],ax	;temp
 ;|***   
 ;|***   /* Update the enable register with the new information */
 ;|*** 
 ;|***   outportb(port,temp);
 ; Line 364
-	*** 0001ca	8b c8 			mov	cx,ax
-	*** 0001cc	8b c3 			mov	ax,bx
-	*** 0001ce	8b d7 			mov	dx,di
-	*** 0001d0	ee 			out	dx, al
-
+	*** 0002e9	ff 76 fc 		push	WORD PTR [bp-4]	;temp
+	*** 0002ec	ff 76 fe 		push	WORD PTR [bp-2]	;port
+	*** 0002ef	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 0002f4	83 c4 04 		add	sp,4
 ;|*** 
 ;|***   /* Set access back to page 0 */
 ;|*** 
 ;|***   outportb(base_port+7,0x0);
 ; Line 368
-	*** 0001d1	33 c0 			xor	ax,ax
-	*** 0001d3	8b d1 			mov	dx,cx
-	*** 0001d5	ee 			out	dx, al
-
+	*** 0002f7	6a 00 			push	0
+	*** 0002f9	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 0002fc	05 07 00 		add	ax,7
+	*** 0002ff	50 			push	ax
+	*** 000300	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000305	83 c4 04 		add	sp,4
 ;|*** 
 ;|*** }
 ; Line 370
-	*** 0001d6	5e 			pop	si
-	*** 0001d7	5f 			pop	di
-	*** 0001d8	c9 			leave	
-	*** 0001d9	cb 			ret	
+	*** 000308	e9 00 00 		jmp	$EX756
+					$EX756:
+	*** 00030b	5e 			pop	si
+	*** 00030c	5f 			pop	di
+	*** 00030d	c9 			leave	
+	*** 00030e	cb 			ret	
 
 ?disab_int@@ZAXH@Z	ENDP
 	PUBLIC	?clr_int@@ZAXH@Z	; clr_int
@@ -760,14 +847,13 @@ UIO48_TEXT      SEGMENT
 ;|*** void clr_int(int bit_number)
 ;|*** {
 ; Line 388
-	*** 0001da	c8 02 00 00 		enter	2,0
-	*** 0001de	57 			push	di
-	*** 0001df	56 			push	si
-;	bit_number = 6
+	*** 00030f	c8 06 00 00 		enter	6,0
+	*** 000313	57 			push	di
+	*** 000314	56 			push	si
 ;	port = -2
-;	register bx = temp
+;	temp = -4
 ;	mask = -6
-	*** 0001e0	8b 7e 06 		mov	di,WORD PTR [bp+6]	;bit_number
+;	bit_number = 6
 ;|*** unsigned port;
 ;|*** unsigned temp;
 ;|*** unsigned mask;
@@ -777,102 +863,106 @@ UIO48_TEXT      SEGMENT
 ;|*** 
 ;|***   --bit_number;
 ; Line 396
-	*** 0001e3	4f 			dec	di
+	*** 000315	ff 4e 06 		dec	WORD PTR [bp+6]	;bit_number
 ;|*** 
 ;|***   /* Calculate the correct I/O address for our enable register */
 ;|*** 
 ;|***   port = (bit_number / 8) + base_port + 8;
+; Line 400
+	*** 000318	8b 46 06 		mov	ax,WORD PTR [bp+6]	;bit_number
+	*** 00031b	99 			cwd	
+	*** 00031c	83 e2 07 		and	dx,7
+	*** 00031f	03 c2 			add	ax,dx
+	*** 000321	c1 f8 03 		sar	ax,3
+	*** 000324	03 06 00 00 		add	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 000328	05 08 00 		add	ax,8
+	*** 00032b	89 46 fe 		mov	WORD PTR [bp-2],ax	;port
 ;|*** 
 ;|***   /* Calculate a bit mask for this bit number */
 ;|*** 
 ;|***   mask = (1 << (bit_number % 8));
+; Line 404
+	*** 00032e	8b 46 06 		mov	ax,WORD PTR [bp+6]	;bit_number
+	*** 000331	b9 08 00 		mov	cx,8
+	*** 000334	99 			cwd	
+	*** 000335	f7 f9 			idiv	cx
+	*** 000337	8b ca 			mov	cx,dx
+	*** 000339	b8 01 00 		mov	ax,1
+	*** 00033c	d3 e0 			shl	ax,cl
+	*** 00033e	89 46 fa 		mov	WORD PTR [bp-6],ax	;mask
 ;|*** 
 ;|***   /* Set access to page 2 for the enable register */
 ;|*** 
 ;|***   outportb(base_port+7,0x80);
 ; Line 408
-	*** 0001e4	b8 80 00 		mov	ax,128	;0080H
-	*** 0001e7	8b 16 00 00 		mov	dx,WORD PTR ?base_port@@3IE	;base_port
-	*** 0001eb	83 c2 07 		add	dx,7
-	*** 0001ee	ee 			out	dx, al
-
+	*** 000341	68 80 00 		push	128	;0080H
+	*** 000344	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 000347	05 07 00 		add	ax,7
+	*** 00034a	50 			push	ax
+	*** 00034b	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000350	83 c4 04 		add	sp,4
 ;|*** 
 ;|***   /* Get current state of the enable register */
 ;|*** 
 ;|***   temp = inportb(port);
 ; Line 412
-	*** 0001ef	8b c7 			mov	ax,di
-	*** 0001f1	8b ca 			mov	cx,dx
-	*** 0001f3	8b df 			mov	bx,di
-	*** 0001f5	99 			cwd	
-	*** 0001f6	83 e2 07 		and	dx,7
-	*** 0001f9	03 c2 			add	ax,dx
-	*** 0001fb	c1 f8 03 		sar	ax,3
-	*** 0001fe	8b d0 			mov	dx,ax
-	*** 000200	03 16 00 00 		add	dx,WORD PTR ?base_port@@3IE	;base_port
-	*** 000204	83 c2 08 		add	dx,8
-	*** 000207	ec 			in	al,dx
-	*** 000208	8b f7 			mov	si,di
-	*** 00020a	8a d8 			mov	bl,al
-	*** 00020c	2a ff 			sub	bh,bh
+	*** 000353	ff 76 fe 		push	WORD PTR [bp-2]	;port
+	*** 000356	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 00035b	83 c4 02 		add	sp,2
+	*** 00035e	89 46 fc 		mov	WORD PTR [bp-4],ax	;temp
 ;|*** 
 ;|***   /* Temporarily clear only OUR enable. This clears the interrupt */
 ;|*** 
 ;|***   temp = temp & ~mask;    /* clear the enable for this bit */
 ; Line 416
-	*** 00020e	8b fa 			mov	di,dx
-	*** 000210	8b c6 			mov	ax,si
-	*** 000212	ba 08 00 		mov	dx,8
-	*** 000215	8b f2 			mov	si,dx
-	*** 000217	99 			cwd	
-	*** 000218	f7 fe 			idiv	si
-	*** 00021a	8b c1 			mov	ax,cx
-	*** 00021c	8b ca 			mov	cx,dx
-	*** 00021e	ba 01 00 		mov	dx,1
-	*** 000221	d3 e2 			shl	dx,cl
-	*** 000223	8b ca 			mov	cx,dx
-	*** 000225	f7 d2 			not	dx
-	*** 000227	23 da 			and	bx,dx
+	*** 000361	8b 46 fa 		mov	ax,WORD PTR [bp-6]	;mask
+	*** 000364	f7 d0 			not	ax
+	*** 000366	21 46 fc 		and	WORD PTR [bp-4],ax	;temp
 ;|***   
 ;|***   /* Write out the temporary value */ 
 ;|*** 
 ;|***   outportb(port,temp);
 ; Line 420
-	*** 000229	89 46 fe 		mov	WORD PTR [bp-2],ax	;port
-	*** 00022c	8b c3 			mov	ax,bx
-	*** 00022e	8b d7 			mov	dx,di
-	*** 000230	ee 			out	dx, al
-
+	*** 000369	ff 76 fc 		push	WORD PTR [bp-4]	;temp
+	*** 00036c	ff 76 fe 		push	WORD PTR [bp-2]	;port
+	*** 00036f	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000374	83 c4 04 		add	sp,4
 ;|*** 
 ;|***   /* Re-enable our interrupt bit */
 ;|*** 
 ;|***   temp = temp | mask;
 ; Line 424
-	*** 000231	0b d9 			or	bx,cx
+	*** 000377	8b 46 fa 		mov	ax,WORD PTR [bp-6]	;mask
+	*** 00037a	09 46 fc 		or	WORD PTR [bp-4],ax	;temp
 ;|*** 
 ;|***   /* Write it out */
 ;|*** 
 ;|***   outportb(port,temp);
 ; Line 428
-	*** 000233	8b c3 			mov	ax,bx
-	*** 000235	ee 			out	dx, al
-
+	*** 00037d	ff 76 fc 		push	WORD PTR [bp-4]	;temp
+	*** 000380	ff 76 fe 		push	WORD PTR [bp-2]	;port
+	*** 000383	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000388	83 c4 04 		add	sp,4
 ;|*** 
 ;|***   /* Set access back to page 0 */
 ;|*** 
 ;|***   outportb(base_port+7,0x0);
 ; Line 432
-	*** 000236	33 c0 			xor	ax,ax
-	*** 000238	8b 56 fe 		mov	dx,WORD PTR [bp-2]	;port
-	*** 00023b	ee 			out	dx, al
-
+	*** 00038b	6a 00 			push	0
+	*** 00038d	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 000390	05 07 00 		add	ax,7
+	*** 000393	50 			push	ax
+	*** 000394	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000399	83 c4 04 		add	sp,4
 ;|*** 
 ;|*** }
 ; Line 434
-	*** 00023c	5e 			pop	si
-	*** 00023d	5f 			pop	di
-	*** 00023e	c9 			leave	
-	*** 00023f	cb 			ret	
+	*** 00039c	e9 00 00 		jmp	$EX761
+					$EX761:
+	*** 00039f	5e 			pop	si
+	*** 0003a0	5f 			pop	di
+	*** 0003a1	c9 			leave	
+	*** 0003a2	cb 			ret	
 
 ?clr_int@@ZAXH@Z	ENDP
 	PUBLIC	?get_int@@ZAHXZ	; get_int
@@ -896,9 +986,10 @@ UIO48_TEXT      SEGMENT
 ;|*** int get_int(void)
 ;|*** {
 ; Line 452
-	*** 000240	c8 04 00 00 		enter	4,0
-	*** 000244	57 			push	di
-;	register bx = x
+	*** 0003a3	c8 04 00 00 		enter	4,0
+	*** 0003a7	57 			push	di
+	*** 0003a8	56 			push	si
+;	x = -4
 ;	temp = -2
 ;|*** int temp;
 ;|*** int x;
@@ -906,19 +997,27 @@ UIO48_TEXT      SEGMENT
 ;|***   /* read the master interrupt pending register, mask off undefined bits */
 ;|*** 
 ;|***   temp = inportb(base_port+6) & 0x07;
+; Line 458
+	*** 0003a9	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 0003ac	05 06 00 		add	ax,6
+	*** 0003af	50 			push	ax
+	*** 0003b0	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0003b5	83 c4 02 		add	sp,2
+	*** 0003b8	25 07 00 		and	ax,7
+	*** 0003bb	89 46 fe 		mov	WORD PTR [bp-2],ax	;temp
 ;|*** 
 ;|***   /* If there are no interrupts pending, return a 0 */
 ;|*** 
 ;|***   if((temp & 7) == 0)
 ; Line 462
-	*** 000245	8b 16 00 00 		mov	dx,WORD PTR ?base_port@@3IE	;base_port
-	*** 000249	83 c2 06 		add	dx,6
-	*** 00024c	ec 			in	al,dx
-	*** 00024d	a8 07 			test	al,7
-	*** 00024f	75 03 			jne	$JCC591
-	*** 000251	e9 a2 00 		jmp	$L803
-					$JCC591:
+	*** 0003be	f6 46 fe 07 		test	BYTE PTR [bp-2],7	;temp
+	*** 0003c2	74 03 			je	$JCC962
+	*** 0003c4	e9 06 00 		jmp	$I769
+					$JCC962:
 ;|***     return(0);
+; Line 463
+	*** 0003c7	b8 00 00 		mov	ax,0
+	*** 0003ca	e9 3b 01 		jmp	$EX766
 ;|*** 
 ;|***   /* There is something pending, now we need to identify what it is */
 ;|*** 
@@ -927,200 +1026,220 @@ UIO48_TEXT      SEGMENT
 ;|*** 
 ;|***   outportb(base_port+7,0xc0);
 ; Line 470
-	*** 000254	b8 c0 00 		mov	ax,192	;00c0H
-	*** 000257	8b 16 00 00 		mov	dx,WORD PTR ?base_port@@3IE	;base_port
-	*** 00025b	83 c2 07 		add	dx,7
-	*** 00025e	89 56 fc 		mov	WORD PTR [bp-4],dx
-	*** 000261	ee 			out	dx, al
-
+					$I769:
+	*** 0003cd	68 c0 00 		push	192	;00c0H
+	*** 0003d0	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 0003d3	05 07 00 		add	ax,7
+	*** 0003d6	50 			push	ax
+	*** 0003d7	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 0003dc	83 c4 04 		add	sp,4
 ;|*** 
 ;|***   /* Read interrupt ID register for port 0 */
 ;|*** 
 ;|***   temp = inportb(base_port+8);
+; Line 474
+	*** 0003df	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 0003e2	05 08 00 		add	ax,8
+	*** 0003e5	50 			push	ax
+	*** 0003e6	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0003eb	83 c4 02 		add	sp,2
+	*** 0003ee	89 46 fe 		mov	WORD PTR [bp-2],ax	;temp
 ;|*** 
 ;|*** 
 ;|***   /* See if any bit set, if so return the bit number */
 ;|*** 
 ;|***   if(temp !=0)
 ; Line 479
-	*** 000262	8b 16 00 00 		mov	dx,WORD PTR ?base_port@@3IE	;base_port
-	*** 000266	83 c2 08 		add	dx,8
-	*** 000269	ec 			in	al,dx
-	*** 00026a	8b f8 			mov	di,ax
-	*** 00026c	0b f8 			or	di,ax
-	*** 00026e	74 13 			je	$I770
+	*** 0003f1	83 7e fe 00 		cmp	WORD PTR [bp-2],0	;temp
+	*** 0003f5	75 03 			jne	$JCC1013
+	*** 0003f7	e9 3f 00 		jmp	$I770
+					$JCC1013:
 ;|***   {
+; Line 480
 ;|***     for(x=0; x <=7; x++)
 ; Line 481
-	*** 000270	33 db 			xor	bx,bx
+	*** 0003fa	c7 46 fc 00 00 		mov	WORD PTR [bp-4],0	;x
+	*** 0003ff	e9 03 00 		jmp	$F771
+					$FC772:
+	*** 000402	ff 46 fc 		inc	WORD PTR [bp-4]	;x
 					$F771:
+	*** 000405	83 7e fc 07 		cmp	WORD PTR [bp-4],7	;x
+	*** 000409	7e 03 			jle	$JCC1033
+	*** 00040b	e9 2b 00 		jmp	$FB773
+					$JCC1033:
 ;|***     {
+; Line 482
 ;|***       if(temp & (1 << x))
 ; Line 483
-	*** 000272	8b cb 			mov	cx,bx
-	*** 000274	b8 01 00 		mov	ax,1
-	*** 000277	d3 e0 			shl	ax,cl
-	*** 000279	85 c7 			test	ax,di
-	*** 00027b	75 4f 			jne	$L794
-	*** 00027d	43 			inc	bx
-	*** 00027e	83 fb 07 		cmp	bx,7
-	*** 000281	7e ef 			jle	$F771
-					$I770:
+	*** 00040e	8a 4e fc 		mov	cl,BYTE PTR [bp-4]	;x
+	*** 000411	b8 01 00 		mov	ax,1
+	*** 000414	d3 e0 			shl	ax,cl
+	*** 000416	85 46 fe 		test	ax,WORD PTR [bp-2]	;temp
+	*** 000419	75 03 			jne	$JCC1049
+	*** 00041b	e9 18 00 		jmp	$I774
+					$JCC1049:
 ;|***       {
-;|***         outportb(base_port+7,0);  /* Turn off access */
-;|***         return(x+1);    /* Return bitnumber with active int */
-;|***       }
-;|***     }
-;|***   }
-;|*** 
-;|***   /* None in Port 0, read port 1 interrupt ID register */
-;|*** 
-;|***   temp = inportb(base_port+9);
-;|*** 
-;|***   /* See if any bit set, if so return the bit number */
-;|*** 
-;|***   if(temp !=0)
-; Line 497
-	*** 000283	8b 16 00 00 		mov	dx,WORD PTR ?base_port@@3IE	;base_port
-	*** 000287	83 c2 09 		add	dx,9
-	*** 00028a	ec 			in	al,dx
-	*** 00028b	2a e4 			sub	ah,ah
-	*** 00028d	8b f8 			mov	di,ax
-	*** 00028f	0b f8 			or	di,ax
-	*** 000291	74 13 			je	$I775
-;|***   {
-;|***     for(x=0; x <=7; x++)
-; Line 499
-	*** 000293	33 db 			xor	bx,bx
-					$F776:
-;|***     {
-;|***       if(temp & (1 << x))
-; Line 501
-	*** 000295	8b cb 			mov	cx,bx
-	*** 000297	b8 01 00 		mov	ax,1
-	*** 00029a	d3 e0 			shl	ax,cl
-	*** 00029c	85 c7 			test	ax,di
-	*** 00029e	75 38 			jne	$L795
-	*** 0002a0	43 			inc	bx
-	*** 0002a1	83 fb 07 		cmp	bx,7
-	*** 0002a4	7e ef 			jle	$F776
-					$I775:
-;|***       {
-;|***         outportb(base_port+7,0);  /* Turn off access */
-;|***         return(x+9);    /* Return bitnumber with active int */
-;|***       }
-;|***     }
-;|***   }
-;|*** 
-;|***   /* Lastly, read status of port 2 int id */
-;|***   
-;|***   temp = inportb(base_port+0x0a);    /* Read port 2 status */
-;|*** 
-;|***   /* If any pending, return the appropriate bit number */
-;|*** 
-;|***   if(temp !=0)
-; Line 515
-	*** 0002a6	8b 16 00 00 		mov	dx,WORD PTR ?base_port@@3IE	;base_port
-	*** 0002aa	83 c2 0a 		add	dx,10	;000aH
-	*** 0002ad	ec 			in	al,dx
-	*** 0002ae	2a e4 			sub	ah,ah
-	*** 0002b0	8b f8 			mov	di,ax
-	*** 0002b2	0b f8 			or	di,ax
-	*** 0002b4	74 3a 			je	$I780
-;|***   {
-;|***     for(x=0; x <=7; x++)
-; Line 517
-	*** 0002b6	33 db 			xor	bx,bx
-					$F781:
-;|***     {
-;|***       if(temp & (1 << x))
-; Line 519
-	*** 0002b8	8b cb 			mov	cx,bx
-	*** 0002ba	b8 01 00 		mov	ax,1
-	*** 0002bd	d3 e0 			shl	ax,cl
-	*** 0002bf	85 c7 			test	ax,di
-	*** 0002c1	75 21 			jne	$L796
-	*** 0002c3	43 			inc	bx
-	*** 0002c4	83 fb 07 		cmp	bx,7
-	*** 0002c7	7e ef 			jle	$F781
-	*** 0002c9	eb 25 			jmp	SHORT $I780
-	*** 0002cb	90 			nop	
-					$L794:
+; Line 484
 ;|***         outportb(base_port+7,0);  /* Turn off access */
 ; Line 485
-	*** 0002cc	33 c0 			xor	ax,ax
-	*** 0002ce	8b 56 fc 		mov	dx,WORD PTR [bp-4]
-	*** 0002d1	ee 			out	dx, al
-
+	*** 00041e	6a 00 			push	0
+	*** 000420	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 000423	05 07 00 		add	ax,7
+	*** 000426	50 			push	ax
+	*** 000427	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 00042c	83 c4 04 		add	sp,4
 ;|***         return(x+1);    /* Return bitnumber with active int */
 ; Line 486
-	*** 0002d2	8d 47 01 		lea	ax,WORD PTR [bx+1]
-	*** 0002d5	5f 			pop	di
-	*** 0002d6	c9 			leave	
-	*** 0002d7	cb 			ret	
+	*** 00042f	8b 46 fc 		mov	ax,WORD PTR [bp-4]	;x
+	*** 000432	40 			inc	ax
+	*** 000433	e9 d2 00 		jmp	$EX766
 ;|***       }
+; Line 487
 ;|***     }
+; Line 488
+					$I774:
+	*** 000436	e9 c9 ff 		jmp	$FC772
+					$FB773:
 ;|***   }
+; Line 489
 ;|*** 
 ;|***   /* None in Port 0, read port 1 interrupt ID register */
 ;|*** 
 ;|***   temp = inportb(base_port+9);
 ; Line 493
-					$L795:
+					$I770:
+	*** 000439	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 00043c	05 09 00 		add	ax,9
+	*** 00043f	50 			push	ax
+	*** 000440	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 000445	83 c4 02 		add	sp,2
+	*** 000448	89 46 fe 		mov	WORD PTR [bp-2],ax	;temp
 ;|*** 
 ;|***   /* See if any bit set, if so return the bit number */
 ;|*** 
 ;|***   if(temp !=0)
+; Line 497
+	*** 00044b	83 7e fe 00 		cmp	WORD PTR [bp-2],0	;temp
+	*** 00044f	75 03 			jne	$JCC1103
+	*** 000451	e9 41 00 		jmp	$I775
+					$JCC1103:
 ;|***   {
+; Line 498
 ;|***     for(x=0; x <=7; x++)
+; Line 499
+	*** 000454	c7 46 fc 00 00 		mov	WORD PTR [bp-4],0	;x
+	*** 000459	e9 03 00 		jmp	$F776
+					$FC777:
+	*** 00045c	ff 46 fc 		inc	WORD PTR [bp-4]	;x
+					$F776:
+	*** 00045f	83 7e fc 07 		cmp	WORD PTR [bp-4],7	;x
+	*** 000463	7e 03 			jle	$JCC1123
+	*** 000465	e9 2d 00 		jmp	$FB778
+					$JCC1123:
 ;|***     {
+; Line 500
 ;|***       if(temp & (1 << x))
+; Line 501
+	*** 000468	8a 4e fc 		mov	cl,BYTE PTR [bp-4]	;x
+	*** 00046b	b8 01 00 		mov	ax,1
+	*** 00046e	d3 e0 			shl	ax,cl
+	*** 000470	85 46 fe 		test	ax,WORD PTR [bp-2]	;temp
+	*** 000473	75 03 			jne	$JCC1139
+	*** 000475	e9 1a 00 		jmp	$I779
+					$JCC1139:
 ;|***       {
+; Line 502
 ;|***         outportb(base_port+7,0);  /* Turn off access */
 ; Line 503
-	*** 0002d8	33 c0 			xor	ax,ax
-	*** 0002da	8b 56 fc 		mov	dx,WORD PTR [bp-4]
-	*** 0002dd	ee 			out	dx, al
-
+	*** 000478	6a 00 			push	0
+	*** 00047a	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 00047d	05 07 00 		add	ax,7
+	*** 000480	50 			push	ax
+	*** 000481	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 000486	83 c4 04 		add	sp,4
 ;|***         return(x+9);    /* Return bitnumber with active int */
 ; Line 504
-	*** 0002de	8d 47 09 		lea	ax,WORD PTR [bx+9]
-	*** 0002e1	5f 			pop	di
-	*** 0002e2	c9 			leave	
-	*** 0002e3	cb 			ret	
+	*** 000489	8b 46 fc 		mov	ax,WORD PTR [bp-4]	;x
+	*** 00048c	05 09 00 		add	ax,9
+	*** 00048f	e9 76 00 		jmp	$EX766
 ;|***       }
+; Line 505
 ;|***     }
+; Line 506
+					$I779:
+	*** 000492	e9 c7 ff 		jmp	$FC777
+					$FB778:
 ;|***   }
+; Line 507
 ;|*** 
 ;|***   /* Lastly, read status of port 2 int id */
 ;|***   
 ;|***   temp = inportb(base_port+0x0a);    /* Read port 2 status */
 ; Line 511
-					$L796:
+					$I775:
+	*** 000495	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 000498	05 0a 00 		add	ax,10	;000aH
+	*** 00049b	50 			push	ax
+	*** 00049c	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 0004a1	83 c4 02 		add	sp,2
+	*** 0004a4	89 46 fe 		mov	WORD PTR [bp-2],ax	;temp
 ;|*** 
 ;|***   /* If any pending, return the appropriate bit number */
 ;|*** 
 ;|***   if(temp !=0)
+; Line 515
+	*** 0004a7	83 7e fe 00 		cmp	WORD PTR [bp-2],0	;temp
+	*** 0004ab	75 03 			jne	$JCC1195
+	*** 0004ad	e9 41 00 		jmp	$I780
+					$JCC1195:
 ;|***   {
+; Line 516
 ;|***     for(x=0; x <=7; x++)
+; Line 517
+	*** 0004b0	c7 46 fc 00 00 		mov	WORD PTR [bp-4],0	;x
+	*** 0004b5	e9 03 00 		jmp	$F781
+					$FC782:
+	*** 0004b8	ff 46 fc 		inc	WORD PTR [bp-4]	;x
+					$F781:
+	*** 0004bb	83 7e fc 07 		cmp	WORD PTR [bp-4],7	;x
+	*** 0004bf	7e 03 			jle	$JCC1215
+	*** 0004c1	e9 2d 00 		jmp	$FB783
+					$JCC1215:
 ;|***     {
+; Line 518
 ;|***       if(temp & (1 << x))
+; Line 519
+	*** 0004c4	8a 4e fc 		mov	cl,BYTE PTR [bp-4]	;x
+	*** 0004c7	b8 01 00 		mov	ax,1
+	*** 0004ca	d3 e0 			shl	ax,cl
+	*** 0004cc	85 46 fe 		test	ax,WORD PTR [bp-2]	;temp
+	*** 0004cf	75 03 			jne	$JCC1231
+	*** 0004d1	e9 1a 00 		jmp	$I784
+					$JCC1231:
 ;|***       {
+; Line 520
 ;|***         outportb(base_port+7,0);  /* Turn off access */
 ; Line 521
-	*** 0002e4	33 c0 			xor	ax,ax
-	*** 0002e6	8b 56 fc 		mov	dx,WORD PTR [bp-4]
-	*** 0002e9	ee 			out	dx, al
-
+	*** 0004d4	6a 00 			push	0
+	*** 0004d6	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 0004d9	05 07 00 		add	ax,7
+	*** 0004dc	50 			push	ax
+	*** 0004dd	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 0004e2	83 c4 04 		add	sp,4
 ;|***         return(x+17);   /* Return bitnumber with active int */
 ; Line 522
-	*** 0002ea	8d 47 11 		lea	ax,WORD PTR [bx+17]
-	*** 0002ed	5f 			pop	di
-	*** 0002ee	c9 			leave	
-	*** 0002ef	cb 			ret	
+	*** 0004e5	8b 46 fc 		mov	ax,WORD PTR [bp-4]	;x
+	*** 0004e8	05 11 00 		add	ax,17	;0011H
+	*** 0004eb	e9 1a 00 		jmp	$EX766
 ;|***       }
+; Line 523
 ;|***     }
+; Line 524
+					$I784:
+	*** 0004ee	e9 c7 ff 		jmp	$FC782
+					$FB783:
 ;|***   }
+; Line 525
 ;|*** 
 ;|***   /* We should never get here unless the hardware is misbehaving but just
 ;|***       to be sure. We'll turn the page access back to 0 and return a 0 for
@@ -1131,20 +1250,23 @@ UIO48_TEXT      SEGMENT
 ;|***   outportb(base_port+7,0);
 ; Line 533
 					$I780:
-	*** 0002f0	33 c0 			xor	ax,ax
-	*** 0002f2	8b 56 fc 		mov	dx,WORD PTR [bp-4]
-	*** 0002f5	ee 			out	dx, al
-
+	*** 0004f1	6a 00 			push	0
+	*** 0004f3	a1 00 00 		mov	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 0004f6	05 07 00 		add	ax,7
+	*** 0004f9	50 			push	ax
+	*** 0004fa	9a 00 00 00 00 		call	FAR PTR __outp
+	*** 0004ff	83 c4 04 		add	sp,4
 ;|***   return 0;
 ; Line 534
-					$L803:
-	*** 0002f6	33 c0 			xor	ax,ax
+	*** 000502	b8 00 00 		mov	ax,0
+	*** 000505	e9 00 00 		jmp	$EX766
 ;|*** }
 ; Line 535
-	*** 0002f8	5f 			pop	di
-	*** 0002f9	c9 			leave	
-	*** 0002fa	cb 			ret	
-	*** 0002fb	90 			nop	
+					$EX766:
+	*** 000508	5e 			pop	si
+	*** 000509	5f 			pop	di
+	*** 00050a	c9 			leave	
+	*** 00050b	cb 			ret	
 
 ?get_int@@ZAHXZ	ENDP
 	PUBLIC	?read_port@@ZAIH@Z	; read_port
@@ -1154,20 +1276,26 @@ UIO48_TEXT      SEGMENT
 ;|*** unsigned read_port(int port_number)
 ;|***   {
 ; Line 539
-	*** 0002fc	55 			push	bp
-	*** 0002fd	8b ec 			mov	bp,sp
+	*** 00050c	c8 00 00 00 		enter	0,0
+	*** 000510	57 			push	di
+	*** 000511	56 			push	si
 ;	port_number = 6
 ;|***   return inportb(port_number + base_port) & 0x00ff;
 ; Line 540
-	*** 0002ff	8b 56 06 		mov	dx,WORD PTR [bp+6]	;port_number
-	*** 000302	03 16 00 00 		add	dx,WORD PTR ?base_port@@3IE	;base_port
-	*** 000306	ec 			in	al,dx
-	*** 000307	2a e4 			sub	ah,ah
+	*** 000512	8b 46 06 		mov	ax,WORD PTR [bp+6]	;port_number
+	*** 000515	03 06 00 00 		add	ax,WORD PTR ?base_port@@3IE	;base_port
+	*** 000519	50 			push	ax
+	*** 00051a	9a 00 00 00 00 		call	FAR PTR __inp
+	*** 00051f	83 c4 02 		add	sp,2
+	*** 000522	2a e4 			sub	ah,ah
+	*** 000524	e9 00 00 		jmp	$EX786
 ;|***   }
 ; Line 541
-	*** 000309	c9 			leave	
-	*** 00030a	cb 			ret	
-	*** 00030b	90 			nop	
+					$EX786:
+	*** 000527	5e 			pop	si
+	*** 000528	5f 			pop	di
+	*** 000529	c9 			leave	
+	*** 00052a	cb 			ret	
 
 ?read_port@@ZAIH@Z	ENDP
 UIO48_TEXT	ENDS

@@ -53,7 +53,6 @@
 #define DLAB0 0x00           /* divisor latch access bit disable */
 #define BR_115200 0x01       /* divisor value for 115200 baud */
 #define BR_57600  0x02 
-#define BR_38400  0x03 
 #define BR_19200  0x06
 #define BR_9600 0x0c         /* divisor value for 9600 baud */
 #define BR_4800 0x18         /* divisor value for 4800 baud */

@@ -47,6 +47,7 @@ struct COMMANDS  // new 12/8/2004
   unsigned int  ln200_mode;
   unsigned int  ln200_init_heading;
   unsigned int  ln200_init_latitude;
+/*
   unsigned int  adcp_reset;
   unsigned int  adcp_heading;
   unsigned int  ds_send_message;
@@ -54,6 +55,14 @@ struct COMMANDS  // new 12/8/2004
   unsigned int  ds_dmgy;
   unsigned int  ds_dmgz;        
   unsigned int  spare1;
+*/
+  unsigned int  ds_send_message;   // new 8/9/06 JTM
+  unsigned int  ds_dmgx1;
+  unsigned int  ds_dmgx2;
+  unsigned int  ds_dmgy1;
+  unsigned int  ds_dmgy2;
+  unsigned int  ds_dmgz1;
+  unsigned int  ds_dmgz2;
   };  
  
 extern COMMANDS commands;

@@ -30,22 +30,36 @@ unsigned tx2_len = 0;
 unsigned rx2_index = 0;
 unsigned char rx2_message[88];
 
+// gps variables
+unsigned char tx4_message[80];
+unsigned tx4_index = 0;
+unsigned tx4_counter = 0;
+unsigned tx4_len = 0;
+unsigned rx4_index = 0;
+unsigned char rx4_message[80];
+
 // global variables
 void (interrupt far * com1_old_vector)();
 void (interrupt far * com2_old_vector)();
+void (interrupt far * com4_old_vector)();
 
 // global flags
 
 
 // external variables
-extern unsigned char adcp_buffer[88];
+//extern unsigned char adcp_buffer[88];
+extern unsigned char adcp_buffer[213];
 extern unsigned      adcp_new_data;
 extern unsigned long adcp_data_frame;
 extern unsigned char ds_buffer[80];
 extern unsigned      ds_new_data;
 extern unsigned long ds_data_frame;
+extern unsigned char gps_buffer[80];
+extern unsigned      gps_new_data;
+extern unsigned long gps_data_frame;
 extern unsigned      com1_tx;
 extern unsigned      com2_tx;
+extern unsigned      com4_tx;
 extern unsigned long frame;
 
 struct TIMER
@@ -57,10 +71,14 @@ struct TIMER
 extern TIMER sys_timer;
 extern TIMER adcp_time;
 extern TIMER ds_time;
+extern TIMER gps_time;
 
 
 void init_com1(void)
   {
+  
+  // for ADCP
+  
   // disable cpu interrupts
   _disable();
   
@@ -106,6 +124,9 @@ void init_com1(void)
 
 void init_com2(void)
   {
+  
+  // for acoustic modem
+  
   // disable cpu interrupts
   _disable();
   
@@ -144,11 +165,55 @@ void init_com2(void)
   // done 
   } // end init_com2()
 
+void init_com4(void)
+  {
+  
+  // receive gps
+
+  // disable cpu interrupts
+  _disable();
+  
+  // set vector for COM4, irq9
+  com4_old_vector = _dos_getvect(9+0x70-8);
+  _dos_setvect(9+0x70-8, com4_isr);
+     
+  // initialize COM4 16550
+  _outp( COM4_LCR, (DLAB1 | NO | STOP1 | EIGHT));
+  _outp( COM4_DLL, BR_9600);  // for gps
+  //_outp( COM4_DLL, BR_4800);  //
+  //_outp( COM4_DLL, BR_57600);
+  _outp( COM4_DLM, 0);
+  _outp( COM4_LCR, (DLAB0 | NO | STOP1 | EIGHT));
+  _outp( COM4_FCR, 0xc1); // enable FIFOs to 14, reset FIFOs
+    
+  // unmask all com4 uart interrupts
+  _outp( COM4_IER, 0x0f);
+  
+  // clear garbage from the com4 iir
+  while((_inp(COM4_IIR) & 0x01) != 1)
+    {
+    _inp(COM4_RX);
+    _inp(COM4_LSR);
+    _inp(COM4_MSR);
+    }
+  
+  // enable com4 irq9 interrupts at the pic
+  _outp(0xa1, _inp(0xa1) & 0xfd);
+
+  // turn on the com4 mcr gate (out2)
+  _outp( COM4_MCR, _inp(COM4_MCR) | 0x08); 
+  
+  // enable cpu interrupts          
+  _enable();
+  // done 
+  } // end init_com4()
+
 
 
 void interrupt far com1_isr(void)
   {
-  // performs rs232 functions on com1
+  // performs rs232 functions on com1 / ADCP
+  
   unsigned intr;
   unsigned i;
   //unsigned lsb;
@@ -256,14 +321,16 @@ void interrupt far com1_isr(void)
         if(rx1_index >= sizeof(rx1_message)) rx1_index = 0;
         }
       
-      if(rx1_index >= 88) // complete frame received
+      //if(rx1_index >= 88) // complete frame received
+      if(rx1_index >= 213) // complete frame received
         {
         // timestamp the adcp message
         _disable();
         time_stamp(&adcp_time);
         _enable();
 
-        memcpy(adcp_buffer, rx1_message, 88);
+        //memcpy(adcp_buffer, rx1_message, 88);
+        memcpy(adcp_buffer, rx1_message, 213);
         //rx1_index = 0;
         adcp_new_data = 1;
         adcp_data_frame = frame;
@@ -421,6 +488,142 @@ void interrupt far com2_isr(void)
 
 
 
+void interrupt far com4_isr(void)
+  {
+  // performs rs232 functions on com4
+  unsigned intr;
+  unsigned i;
+    
+  _enable();
+    
+  // disable com4 uart interrupts      
+  _outp(COM4_MCR, _inp(COM4_MCR) & 0xf7);
+  
+  start_com4_isr:
+  
+  // check contents of COM4_IIR  
+  intr = _inp(COM4_IIR);
+  intr = intr & 0x0f; // mask off b7 to b4
+  
+  if((intr & 0x01) == 0) // if a valid com4 interrupt is pending
+    {   
+    // shift IIR value right one bit and test to see which routine is required
+    intr = intr >> 1;
+  
+    // do rs232 input interrupt routine
+    if(intr == 0)
+      {
+      // read the rs232 status register
+      unsigned msr_char = _inp(COM4_MSR);
+      goto start_com4_isr;
+      }
+     
+    // do tx buffer empty interrupt routine
+    if(intr == 1)
+      {
+      // either write to tx FIFO or read int id register again
+      
+      // the idea here is to continue a tx once it has started,
+      // not to start one in the first place
+      
+      // the tx is started by the main() program writing the first
+      // char to the tx buffer, which will send the char out
+      
+      // once the tx fifo has drained, the tbe bit will be
+      // set in the iir, indicating that the tx buffer is ready for more
+      
+      // we will refill the tx fifo, up to 127 chars, for a total of 128
+      if(com4_tx==0)  // no message to tx
+        {
+        _inp(COM4_IIR);
+        goto start_com4_isr;
+        }
+      if(com4_tx==1)  // tx remaining message
+        {
+        for(i=0; i<16;i++) // load 16 characters into the tx fifo
+          {
+          if(com4_tx==0) break;
+          else  // only if more message needs to be sent
+            {
+            _outp(COM4_TX, tx4_message[tx4_index]); // write the next character
+            tx4_index++;
+            tx4_counter++;
+            if(tx4_index >= tx4_len)  // entire message has been sent
+              {
+              tx4_index = 0;
+              com4_tx = 0;
+              tx4_len = 0;
+              goto start_com4_isr;  
+              }
+            }
+          }
+        }
+      goto start_com4_isr;    
+      }
+      
+    // rx data received interrupt routine (>= 14 bytes in receive buffer)
+    if(intr == 2)
+      {
+      // read rx register
+            
+      // read 12 bytes from the rx register (still at least 2 bytes left)
+      for(i = 0; i < 12; i++)
+        {
+        rx4_message[rx4_index] = _inp(COM4_RX);
+        rx4_index++;
+        if(rx4_index >= 80)
+          rx4_index = 0;
+        }
+        
+      goto start_com4_isr;
+      }
+    
+    // else do serialization error/break routine  
+    if(intr == 3)
+      {
+      // read serialization status register
+      unsigned lsr_char = _inp(COM4_LSR);
+      goto start_com4_isr;
+      }
+    
+    // do rx character timeout routine: message end
+    if(intr == 6)
+      {
+      // drain rx register first
+      while((_inp(COM4_LSR) & 0x01) == 1)
+        {
+        rx4_message[rx4_index] = _inp(COM4_RX);
+        rx4_index++;
+        if(rx4_index >= 80)
+          rx4_index = 0;
+        }
+      
+      if(rx4_index >= 77) // complete frame received
+        {
+        time_stamp(&gps_time);
+        memcpy(gps_buffer, rx4_message, sizeof(gps_buffer));
+        gps_new_data = 1;
+        gps_data_frame = frame;
+        rx4_index = 0;
+        //for(i=0; i<sizeof(rx4_message); i++)
+        //  rx4_message[i] = 0;
+        _fmemset(rx4_message, 0, sizeof(rx4_message));
+        }
+
+      goto start_com4_isr;      
+      } // end rx character timeout routine
+        
+    goto start_com4_isr;
+    }  // end if((intr & 0x01) == 0)
+  
+  _disable();  
+  // enable com4 uart interrupts    
+  _outp(COM4_MCR, _inp(COM4_MCR) | 0x08);
+  _outp(0xa0, 0x20);  // non-specific return from interrupt slave pic
+  _outp(0x20, 0x20);  // non-specific return from interrupt master pic
+  }  // end com4_isr()
+
+
 void shutdown_com1(void)
   {
   _disable();
@@ -445,6 +648,20 @@ void shutdown_com2(void)
   _outp(0x21, _inp(0x21) | ~0xf7); 
   // restore original COM2 vector
   _dos_setvect(3+8, com2_old_vector);
+  _enable();
+  }
+  
+
+void shutdown_com4(void)
+  {
+  _disable();
+  // disable com4 interrupts at the uart
+  _outp( COM4_MCR, 0x00);
+  _outp( COM4_IER, 0x00);
+  // mask irq9 interrupts at pic
+  _outp(0xa1, _inp(0xa1) | ~0xfd); 
+  // restore original COM4 vector
+  _dos_setvect(9+0x70-8, com4_old_vector);
   _enable();
   }
   

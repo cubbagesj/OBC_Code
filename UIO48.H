@@ -37,8 +37,6 @@
 *****************************************************************************
 */
 
-#define UIO48BASE 0x120
-
 #define RISING 1
 #define FALLING 0
 
@@ -64,8 +62,8 @@
 #define VALVE5      14   // output
 #define VALVE6      15   // output
 #define PUMP        16   // output
-#define HEARTBEAT   17   // output
-//#define HEARTBEAT   19   // output    bad dio bit 17.  DB  8/9/05
+//#define HEARTBEAT   17   // output
+#define HEARTBEAT   19   // output    bad dio bit 17.  DB  8/9/05
 #define ERS         18   // output
 #define VALVEOFF     1
 #define VALVEON      0

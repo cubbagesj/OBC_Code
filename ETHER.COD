@@ -1,0 +1,1800 @@
+;	Static Name Aliases
+;
+;	$S1666_i	EQU	i
+;	$S1667_j	EQU	j
+;	$S1426_error_msg	EQU	error_msg
+	TITLE   c:\dmmtest\ether.cpp
+	.286p
+INCLUDELIB      LLIBCE
+INCLUDELIB	OLDNAMES.LIB
+ETHER_TEXT	SEGMENT  WORD PUBLIC 'CODE'
+ETHER_TEXT	ENDS
+_DATA	SEGMENT  WORD PUBLIC 'DATA'
+_DATA	ENDS
+CONST	SEGMENT  WORD PUBLIC 'CONST'
+CONST	ENDS
+_BSS	SEGMENT  WORD PUBLIC 'BSS'
+_BSS	ENDS
+DGROUP	GROUP	CONST, _BSS, _DATA
+	ASSUME DS: DGROUP, SS: DGROUP
+PUBLIC  ?last_function@@3HE
+PUBLIC  ?done@@3HE
+PUBLIC  ?packets_sent@@3KE
+PUBLIC  ?packets_rcvd@@3KE
+PUBLIC  ?receiver_calls@@3KE
+PUBLIC  ?ax0_counter@@3KE
+PUBLIC  ?ax1_counter@@3KE
+PUBLIC  ?discards@@3KE
+PUBLIC  ?checksum16@@3IE
+PUBLIC  ?pc1_addr@@3QEEE
+PUBLIC  ?pc2_addr@@3QEEE
+PUBLIC  ?pc3_addr@@3QEEE
+PUBLIC  ?jim_pc@@3QEEE
+PUBLIC  ?broadcast_addr@@3QEEE
+PUBLIC  ?merror@@3HE
+PUBLIC  ?error_num@@3HE
+PUBLIC  ?carry_flag@@3HE
+PUBLIC  ?version@@3HE
+PUBLIC  ?etherclass@@3HE
+PUBLIC  ?type@@3HE
+PUBLIC  ?number@@3HE
+PUBLIC  ?setmode@@3HE
+PUBLIC  ?getmode@@3HE
+PUBLIC  ?prxbuf@@3PEEE
+PUBLIC  ?functionality@@3HE
+PUBLIC  ?rx_flag@@3HE
+PUBLIC  ?function@@3HE
+EXTRN	_segread:FAR
+EXTRN	__fmemcpy:FAR
+EXTRN	__fmemset:FAR
+EXTRN	__fstrcpy:FAR
+EXTRN	__int86x:FAR
+EXTRN	__segread:FAR
+EXTRN	_printf:FAR
+EXTRN	?time_stamp@@ZAXPEUTIMER@@@Z:FAR
+EXTRN	__fstrnicmp:FAR
+EXTRN	_int86:FAR
+EXTRN	_int86x:FAR
+EXTRN	?cmds_time@@3UTIMER@@E:FWORD
+EXTRN	?echo@@3UECHO@@E:BYTE
+EXTRN	?cmd_buffer@@3QEEE:BYTE
+EXTRN	?obc_mac@@3QEEE:FWORD
+EXTRN	?frame@@3KE:DWORD
+EXTRN	?time_since_last_command@@3HE:WORD
+_DATA      SEGMENT
+$S1426_error_msg	DB	'NO_ERROR',  00H
+ 	DB	6 DUP(0)
+
+	DB	'BAD_HANDLE',  00H
+ 	DB	4 DUP(0)
+
+	DB	'NO_CLASS',  00H
+ 	DB	6 DUP(0)
+
+	DB	'NO_TYPE',  00H
+ 	DB	7 DUP(0)
+
+	DB	'NO_NUMBER',  00H
+ 	DB	5 DUP(0)
+
+	DB	'BAD_TYPE',  00H
+ 	DB	6 DUP(0)
+
+	DB	'NO_MULTICAST',  00H
+ 	DB	2 DUP(0)
+
+	DB	'CANT_TERMINATE',  00H
+	DB	'BAD_MODE',  00H
+ 	DB	6 DUP(0)
+
+	DB	'NO_SPACE',  00H
+ 	DB	6 DUP(0)
+
+	DB	'TYPE_INUSE',  00H
+ 	DB	4 DUP(0)
+
+	DB	'BAD_COMMAND',  00H
+ 	DB	3 DUP(0)
+
+	DB	'CANT_SEND',  00H
+ 	DB	5 DUP(0)
+
+	DB	'CANT_SET',  00H
+ 	DB	6 DUP(0)
+
+	DB	'BAD_ADDRESS',  00H
+ 	DB	3 DUP(0)
+
+	DB	'CANT_RESET',  00H
+ 	DB	4 DUP(0)
+
+?prxbuf@@3PEEE	DD	DGROUP:?rxbuf@@3QEEE
+?pc1_addr@@3QEEE	DB	08H
+	DB	00H
+	DB	017H
+	DB	08H
+	DB	087H
+	DB	04dH
+?pc2_addr@@3QEEE	DB	08H
+	DB	00H
+	DB	017H
+	DB	08H
+	DB	06dH
+	DB	091H
+?pc3_addr@@3QEEE	DB	08H
+	DB	00H
+	DB	017H
+	DB	08H
+	DB	078H
+	DB	050H
+?jim_pc@@3QEEE	DB	00H
+	DB	08H
+	DB	074H
+	DB	03cH
+	DB	07H
+	DB	0e6H
+?broadcast_addr@@3QEEE	DB	0ffH
+	DB	0ffH
+	DB	0ffH
+	DB	0ffH
+	DB	0ffH
+	DB	0ffH
+?merror@@3HE	DW	00H
+?error_num@@3HE	DW	00H
+?carry_flag@@3HE	DW	00H
+?version@@3HE	DW	00H
+?etherclass@@3HE	DW	00H
+?type@@3HE	DW	00H
+?number@@3HE	DW	00H
+?setmode@@3HE	DW	00H
+?getmode@@3HE	DW	00H
+?functionality@@3HE	DW	00H
+?rx_flag@@3HE	DW	00H
+?function@@3HE	DW	00H
+?last_function@@3HE	DW	00H
+?done@@3HE	DW	00H
+?packets_sent@@3KE	DD	00H
+?packets_rcvd@@3KE	DD	00H
+?receiver_calls@@3KE	DD	00H
+?ax0_counter@@3KE	DD	00H
+?ax1_counter@@3KE	DD	00H
+?discards@@3KE	DD	00H
+?checksum16@@3IE	DW	00H
+$SG1692	DB	'Driver_info()',  0aH,  00H
+$SG1693	DB	'Version: %d',  0aH,  00H
+$SG1694	DB	'Ifclass: %d',  00H
+$SG1696	DB	', DIX Bluebook',  0aH,  00H
+$SG1698	DB	', IEEE 802.3 w/802.2 headers',  0aH,  00H
+$SG1699	DB	'Type: %d',  0aH,  00H
+$SG1700	DB	'Number: %d',  0aH,  00H
+$SG1701	DB	'Name: %s',  0aH,  00H
+$SG1702	DB	'Functionality: %d',  00H
+$SG1704	DB	', basic',  0aH,  00H
+$SG1706	DB	', basic, extended(*)',  0aH,  00H
+$SG1708	DB	', basic, high performance(+)',  0aH,  00H
+$SG1710	DB	', basic, high performance(+), extended(*)',  0aH,  00H
+$SG1712	DB	', not installed',  0aH,  00H
+$SG1865	DB	'%s',  0aH,  00H
+$SG1866	DB	0aH,  00H
+_DATA      ENDS
+_BSS      SEGMENT
+	ORG	$+2096
+PUBLIC  ?packet_len@@3HE
+?packet_len@@3HE	DW 01H DUP (?)
+$S1666_i	DW 01H DUP (?)
+$S1667_j	DW 01H DUP (?)
+PUBLIC  ?msg_rcvd@@3HE
+?msg_rcvd@@3HE	DW 01H DUP (?)
+	ORG	$-104
+PUBLIC  ?name@@3QEDE
+?name@@3QEDE	DW 028H DUP (?)
+PUBLIC  ?addr_buf@@3QEEE
+?addr_buf@@3QEEE	DW 03H DUP (?)
+PUBLIC  ?ethertype@@3QEDE
+?ethertype@@3QEDE	DB 05H DUP (?)
+	ORG	$-2091
+PUBLIC  ?rxbuf@@3QEEE
+?rxbuf@@3QEEE	DW 03e8H DUP (?)
+	ORG	$+92
+PUBLIC  ?handle@@3HE
+?handle@@3HE	DW 01H DUP (?)
+PUBLIC  ?txlen@@3IE
+?txlen@@3IE	DW 01H DUP (?)
+_BSS      ENDS
+ETHER_TEXT      SEGMENT
+	ASSUME	CS: ETHER_TEXT
+	PUBLIC	?driver_info@@ZAHI@Z	; driver_info
+?driver_info@@ZAHI@Z	PROC FAR	; driver_info
+;|*** // ether.cpp module for autonomous obc project
+;|*** // JTM Code 5600
+;|*** // 2/27/2004
+;|*** 
+;|*** 
+;|*** 
+;|*** #include <dos.h>
+;|*** #include <stdio.h>
+;|*** #include <conio.h>
+;|*** #include <string.h>
+;|*** #include <stdlib.h>
+;|*** #include "pktdrv.h"
+;|*** #include "ether.h"
+;|*** #include "dmmtest.h"
+;|*** 
+;|*** //unsigned udp_checksum;
+;|*** //unsigned char rxbuf[MAX_RXBUF+200];
+;|*** unsigned char rxbuf[2000];
+;|*** unsigned char far * prxbuf = rxbuf;
+;|*** //unsigned char far app_buffer[MAX_RXBUF+200];
+;|*** extern unsigned char far cmd_buffer[2008];
+;|*** extern unsigned char obc_mac[6];
+;|*** extern unsigned char far data_pkt[MAX_RXBUF+200];
+;|*** 
+;|*** //extern commands;
+;|*** extern unsigned long frame;
+;|*** extern int time_since_last_command;
+;|*** //extern struct SYS sys;
+;|*** //extern struct OBS obs;
+;|*** //extern struct DYNO dyno;
+;|*** //extern struct PROP prop;
+;|*** //extern struct LN200 ln200;
+;|*** //extern struct ECHO echo;
+;|*** //extern struct DS ds;
+;|*** //extern struct ADCP adcp; 
+;|*** 
+;|*** struct COMMANDS  // new 12/8/2004
+;|***   {
+;|***   unsigned int  sync_word;
+;|***   unsigned int  mode;
+;|***   unsigned int  rpm;
+;|***   unsigned int  rudder;
+;|***   unsigned int  stern1;
+;|***   unsigned int  stern2;
+;|***   unsigned int  fore;  
+;|***   unsigned int  ballast;
+;|***   unsigned int  ln200_mode;
+;|***   unsigned int  ln200_init_heading;
+;|***   unsigned int  ln200_init_latitude;
+;|*** /*
+;|***   unsigned int  adcp_reset;
+;|***   unsigned int  adcp_heading;
+;|***   unsigned int  ds_send_message;
+;|***   unsigned int  ds_dmgx;
+;|***   unsigned int  ds_dmgy;
+;|***   unsigned int  ds_dmgz;        
+;|***   unsigned int  spare1;
+;|*** */
+;|***   unsigned int  ds_send_message;   // new 8/9/06 JTM
+;|***   unsigned int  ds_dmgx1;
+;|***   unsigned int  ds_dmgx2;
+;|***   unsigned int  ds_dmgy1;
+;|***   unsigned int  ds_dmgy2;
+;|***   unsigned int  ds_dmgz1;
+;|***   unsigned int  ds_dmgz2;
+;|***   };  
+;|***  
+;|*** extern COMMANDS commands;
+;|*** 
+;|*** struct TIMER
+;|***   {
+;|***   unsigned long high;
+;|***   unsigned int  low;
+;|***   };
+;|***   
+;|*** struct ECHO            // new 12/08/2004
+;|***   {
+;|***   unsigned int  new_data;
+;|***   unsigned long frame;
+;|***   unsigned long time_high;
+;|***   unsigned int  time_low;
+;|***   unsigned char data[sizeof(commands)];
+;|***   };
+;|***   
+;|*** 
+;|*** //extern TIMER cmd_packet_time;
+;|*** extern TIMER sys_timer;
+;|*** extern TIMER cmds_time;
+;|*** 
+;|*** extern ECHO  echo;
+;|*** 
+;|*** char name[80];
+;|*** 
+;|*** unsigned char addr_buf[6];
+;|*** unsigned char pc1_addr[6]       = {0x08, 0x00, 0x17, 0x08, 0x87, 0x4d}; // pc1
+;|*** unsigned char pc2_addr[6]       = {0x08, 0x00, 0x17, 0x08, 0x6d, 0x91}; // pc2
+;|*** unsigned char pc3_addr[6]       = {0x08, 0x00, 0x17, 0x08, 0x78, 0x50}; // pc3
+;|*** unsigned char jim_pc[6]         = {0x00, 0x08, 0x74, 0x3c, 0x07, 0xe6}; // laptop
+;|*** unsigned char broadcast_addr[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+;|*** //unsigned char control_mac[6]    = {0x00, 0x01, 0x45, 0x00, 0x8a, 0x21};
+;|*** //unsigned char micron_mac[6]     = {0x08, 0x00, 0x17, 0x08, 0x87, 0x4d};
+;|*** //unsigned char obc_mac[6]        = {0x00, 0x01, 0x45, 0x00, 0x7a, 0x84};
+;|*** 
+;|*** char ethertype[5];
+;|*** int merror = 0;
+;|*** int error_num = 0;
+;|*** int carry_flag = 0;
+;|*** int version = 0;
+;|*** int etherclass = 0;
+;|*** int type = 0;
+;|*** int number = 0;
+;|*** int setmode = 0;
+;|*** int getmode = 0;
+;|*** int functionality = 0;
+;|*** int handle;
+;|*** unsigned txlen;
+;|*** int rx_flag =0;
+;|*** int function = 0;
+;|*** int last_function = 0;
+;|*** int packet_len;
+;|*** static int i, j;
+;|*** int msg_rcvd;
+;|*** int done = 0;
+;|*** unsigned long packets_sent = 0;
+;|*** unsigned long packets_rcvd = 0;
+;|*** unsigned long receiver_calls = 0;
+;|*** unsigned long ax0_counter = 0;
+;|*** unsigned long ax1_counter = 0;
+;|*** unsigned long discards = 0;
+;|*** //unsigned ip_id = 0;
+;|*** unsigned checksum16 = 0;
+;|*** 
+;|*** 
+;|*** 
+;|*** int driver_info(unsigned dhandle)
+;|***   {
+; Line 136
+	*** 000000	c8 70 00 00 		enter	112,0
+	*** 000004	57 			push	di
+	*** 000005	56 			push	si
+;	regs = -14
+;	sregs = -22
+;	version = -24
+;	iclass = -26
+;	type = -28
+;	number = -30
+;	name = -110
+;	functionality = -112
+;	dhandle = 6
+;|***   union REGS regs;
+;|***   struct SREGS sregs;
+;|***   int version;
+;|***   int iclass;
+;|***   int type;
+;|***   int number;
+;|***   char name[80];
+;|***   int functionality;
+;|*** 
+;|***   regs.h.ah = DRIVER_INFO;
+; Line 146
+	*** 000006	c6 46 f3 01 		mov	BYTE PTR [bp-13],1
+;|***   regs.h.al = 255;
+; Line 147
+	*** 00000a	c6 46 f2 ff 		mov	BYTE PTR [bp-14],255	;00ffH	;regs
+;|***   regs.x.bx = dhandle;  //jtm
+; Line 148
+	*** 00000e	8b 46 06 		mov	ax,WORD PTR [bp+6]	;dhandle
+	*** 000011	89 46 f4 		mov	WORD PTR [bp-12],ax
+;|***   int86x(PKTDVR, &regs, &regs, &sregs);
+; Line 149
+	*** 000014	8d 46 ea 		lea	ax,WORD PTR [bp-22]	;sregs
+	*** 000017	16 			push	ss
+	*** 000018	50 			push	ax
+	*** 000019	8d 46 f2 		lea	ax,WORD PTR [bp-14]	;regs
+	*** 00001c	16 			push	ss
+	*** 00001d	50 			push	ax
+	*** 00001e	16 			push	ss
+	*** 00001f	50 			push	ax
+	*** 000020	6a 7e 			push	126	;007eH
+	*** 000022	9a 00 00 00 00 		call	FAR PTR _int86x
+	*** 000027	83 c4 0e 		add	sp,14	;000eH
+;|***   version = regs.x.bx;
+; Line 150
+	*** 00002a	8b 46 f4 		mov	ax,WORD PTR [bp-12]
+	*** 00002d	89 46 e8 		mov	WORD PTR [bp-24],ax	;version
+;|***   iclass = regs.h.ch;
+; Line 151
+	*** 000030	8a 46 f7 		mov	al,BYTE PTR [bp-9]
+	*** 000033	2a e4 			sub	ah,ah
+	*** 000035	89 46 e6 		mov	WORD PTR [bp-26],ax	;iclass
+;|***   type  = regs.x.dx;
+; Line 152
+	*** 000038	8b 46 f8 		mov	ax,WORD PTR [bp-8]
+	*** 00003b	89 46 e4 		mov	WORD PTR [bp-28],ax	;type
+;|***   number = regs.h.cl;
+; Line 153
+	*** 00003e	8a 46 f6 		mov	al,BYTE PTR [bp-10]
+	*** 000041	2a e4 			sub	ah,ah
+	*** 000043	89 46 e2 		mov	WORD PTR [bp-30],ax	;number
+;|***   _fstrcpy(name, (char far *)MK_FP(sregs.ds, regs.x.si));
+; Line 154
+	*** 000046	8b 46 fa 		mov	ax,WORD PTR [bp-6]
+	*** 000049	8b 56 f0 		mov	dx,WORD PTR [bp-16]
+	*** 00004c	52 			push	dx
+	*** 00004d	50 			push	ax
+	*** 00004e	8d 46 92 		lea	ax,WORD PTR [bp-110]	;name
+	*** 000051	16 			push	ss
+	*** 000052	50 			push	ax
+	*** 000053	9a 00 00 00 00 		call	FAR PTR __fstrcpy
+	*** 000058	83 c4 08 		add	sp,8
+;|***   functionality = regs.h.al;
+; Line 155
+	*** 00005b	8a 46 f2 		mov	al,BYTE PTR [bp-14]	;regs
+	*** 00005e	2a e4 			sub	ah,ah
+	*** 000060	89 46 90 		mov	WORD PTR [bp-112],ax	;functionality
+;|***   
+;|***   printf("Driver_info()\n");
+; Line 157
+	*** 000063	1e 			push	ds
+	*** 000064	68 00 00 		push	OFFSET DGROUP:$SG1692
+	*** 000067	9a 00 00 00 00 		call	FAR PTR _printf
+	*** 00006c	83 c4 04 		add	sp,4
+;|***   printf("Version: %d\n", version);
+; Line 158
+	*** 00006f	ff 76 e8 		push	WORD PTR [bp-24]	;version
+	*** 000072	1e 			push	ds
+	*** 000073	68 00 00 		push	OFFSET DGROUP:$SG1693
+	*** 000076	9a 00 00 00 00 		call	FAR PTR _printf
+	*** 00007b	83 c4 06 		add	sp,6
+;|***   printf("Ifclass: %d", iclass);
+; Line 159
+	*** 00007e	ff 76 e6 		push	WORD PTR [bp-26]	;iclass
+	*** 000081	1e 			push	ds
+	*** 000082	68 00 00 		push	OFFSET DGROUP:$SG1694
+	*** 000085	9a 00 00 00 00 		call	FAR PTR _printf
+	*** 00008a	83 c4 06 		add	sp,6
+;|***   if(iclass == CL_ETHERNET) printf(", DIX Bluebook\n");
+; Line 160
+	*** 00008d	83 7e e6 01 		cmp	WORD PTR [bp-26],1	;iclass
+	*** 000091	74 03 			je	$JCC145
+	*** 000093	e9 0c 00 		jmp	$I1695
+					$JCC145:
+	*** 000096	1e 			push	ds
+	*** 000097	68 00 00 		push	OFFSET DGROUP:$SG1696
+	*** 00009a	9a 00 00 00 00 		call	FAR PTR _printf
+	*** 00009f	83 c4 04 		add	sp,4
+;|***   if(iclass == CL_IEEE8023) printf(", IEEE 802.3 w/802.2 headers\n");
+; Line 161
+					$I1695:
+	*** 0000a2	83 7e e6 0b 		cmp	WORD PTR [bp-26],11	;000bH	;iclass
+	*** 0000a6	74 03 			je	$JCC166
+	*** 0000a8	e9 0c 00 		jmp	$I1697
+					$JCC166:
+	*** 0000ab	1e 			push	ds
+	*** 0000ac	68 00 00 		push	OFFSET DGROUP:$SG1698
+	*** 0000af	9a 00 00 00 00 		call	FAR PTR _printf
+	*** 0000b4	83 c4 04 		add	sp,4
+;|***   printf("Type: %d\n", type);
+; Line 162
+					$I1697:
+	*** 0000b7	ff 76 e4 		push	WORD PTR [bp-28]	;type
+	*** 0000ba	1e 			push	ds
+	*** 0000bb	68 00 00 		push	OFFSET DGROUP:$SG1699
+	*** 0000be	9a 00 00 00 00 		call	FAR PTR _printf
+	*** 0000c3	83 c4 06 		add	sp,6
+;|***   printf("Number: %d\n", number);
+; Line 163
+	*** 0000c6	ff 76 e2 		push	WORD PTR [bp-30]	;number
+	*** 0000c9	1e 			push	ds
+	*** 0000ca	68 00 00 		push	OFFSET DGROUP:$SG1700
+	*** 0000cd	9a 00 00 00 00 		call	FAR PTR _printf
+	*** 0000d2	83 c4 06 		add	sp,6
+;|***   printf("Name: %s\n", name);
+; Line 164
+	*** 0000d5	8d 46 92 		lea	ax,WORD PTR [bp-110]	;name
+	*** 0000d8	16 			push	ss
+	*** 0000d9	50 			push	ax
+	*** 0000da	1e 			push	ds
+	*** 0000db	68 00 00 		push	OFFSET DGROUP:$SG1701
+	*** 0000de	9a 00 00 00 00 		call	FAR PTR _printf
+	*** 0000e3	83 c4 08 		add	sp,8
+;|***   printf("Functionality: %d", functionality);
+; Line 165
+	*** 0000e6	ff 76 90 		push	WORD PTR [bp-112]	;functionality
+	*** 0000e9	1e 			push	ds
+	*** 0000ea	68 00 00 		push	OFFSET DGROUP:$SG1702
+	*** 0000ed	9a 00 00 00 00 		call	FAR PTR _printf
+	*** 0000f2	83 c4 06 		add	sp,6
+;|***   if(functionality == 1) printf(", basic\n");
+; Line 166
+	*** 0000f5	83 7e 90 01 		cmp	WORD PTR [bp-112],1	;functionality
+	*** 0000f9	74 03 			je	$JCC249
+	*** 0000fb	e9 0c 00 		jmp	$I1703
+					$JCC249:
+	*** 0000fe	1e 			push	ds
+	*** 0000ff	68 00 00 		push	OFFSET DGROUP:$SG1704
+	*** 000102	9a 00 00 00 00 		call	FAR PTR _printf
+	*** 000107	83 c4 04 		add	sp,4
+;|***   if(functionality == 2) printf(", basic, extended(*)\n");
+; Line 167
+					$I1703:
+	*** 00010a	83 7e 90 02 		cmp	WORD PTR [bp-112],2	;functionality
+	*** 00010e	74 03 			je	$JCC270
+	*** 000110	e9 0c 00 		jmp	$I1705
+					$JCC270:
+	*** 000113	1e 			push	ds
+	*** 000114	68 00 00 		push	OFFSET DGROUP:$SG1706
+	*** 000117	9a 00 00 00 00 		call	FAR PTR _printf
+	*** 00011c	83 c4 04 		add	sp,4
+;|***   if(functionality == 5) printf(", basic, high performance(+)\n");
+; Line 168
+					$I1705:
+	*** 00011f	83 7e 90 05 		cmp	WORD PTR [bp-112],5	;functionality
+	*** 000123	74 03 			je	$JCC291
+	*** 000125	e9 0c 00 		jmp	$I1707
+					$JCC291:
+	*** 000128	1e 			push	ds
+	*** 000129	68 00 00 		push	OFFSET DGROUP:$SG1708
+	*** 00012c	9a 00 00 00 00 		call	FAR PTR _printf
+	*** 000131	83 c4 04 		add	sp,4
+;|***   if(functionality == 6) printf(", basic, high performance(+), extended(*)\n");
+; Line 169
+					$I1707:
+	*** 000134	83 7e 90 06 		cmp	WORD PTR [bp-112],6	;functionality
+	*** 000138	74 03 			je	$JCC312
+	*** 00013a	e9 0c 00 		jmp	$I1709
+					$JCC312:
+	*** 00013d	1e 			push	ds
+	*** 00013e	68 00 00 		push	OFFSET DGROUP:$SG1710
+	*** 000141	9a 00 00 00 00 		call	FAR PTR _printf
+	*** 000146	83 c4 04 		add	sp,4
+;|***   if(functionality == 255) printf(", not installed\n");
+; Line 170
+					$I1709:
+	*** 000149	81 7e 90 ff 00 		cmp	WORD PTR [bp-112],255	;00ffH	;functionality
+	*** 00014e	74 03 			je	$JCC334
+	*** 000150	e9 0c 00 		jmp	$I1711
+					$JCC334:
+	*** 000153	1e 			push	ds
+	*** 000154	68 00 00 		push	OFFSET DGROUP:$SG1712
+	*** 000157	9a 00 00 00 00 		call	FAR PTR _printf
+	*** 00015c	83 c4 04 		add	sp,4
+;|***   //last_function = function;
+;|***   
+;|***   if(regs.x.cflag) error_num = regs.h.dh;
+; Line 173
+					$I1711:
+	*** 00015f	83 7e fe 00 		cmp	WORD PTR [bp-2],0
+	*** 000163	75 03 			jne	$JCC355
+	*** 000165	e9 0b 00 		jmp	$I1713
+					$JCC355:
+	*** 000168	8a 46 f9 		mov	al,BYTE PTR [bp-7]
+	*** 00016b	2a e4 			sub	ah,ah
+	*** 00016d	a3 00 00 		mov	WORD PTR ?error_num@@3HE,ax	;error_num
+;|***   else error_num = 0;
+; Line 174
+	*** 000170	e9 06 00 		jmp	$I1714
+					$I1713:
+	*** 000173	c7 06 00 00 00 00 	mov	WORD PTR ?error_num@@3HE,0	;error_num
+					$I1714:
+;|***   return(regs.x.cflag);
+; Line 175
+	*** 000179	8b 46 fe 		mov	ax,WORD PTR [bp-2]
+	*** 00017c	e9 00 00 		jmp	$EX1678
+;|***   // end driver_info()
+;|***   }
+; Line 177
+					$EX1678:
+	*** 00017f	5e 			pop	si
+	*** 000180	5f 			pop	di
+	*** 000181	c9 			leave	
+	*** 000182	cb 			ret	
+
+?driver_info@@ZAHI@Z	ENDP
+	PUBLIC	?access_type@@ZAHHHHPEDIP7AXIIIIIIIIIIIII@Z@Z	; access_type
+?access_type@@ZAHHHHPEDIP7AXIIIIIIIIIIIII@Z@Z	PROC FAR	; access_type
+;|*** 
+;|*** int access_type(int if_class, int if_type, int if_number, char far *type,
+;|***                      unsigned typelen,   void (interrupt far *a_receiver)
+;|***                      (unsigned, unsigned, unsigned, unsigned,
+;|***                       unsigned, unsigned, unsigned, unsigned,
+;|***                       unsigned, unsigned, unsigned, unsigned,
+;|***                       unsigned) )
+;|***   {
+; Line 185
+	*** 000183	c8 16 00 00 		enter	22,0
+	*** 000187	57 			push	di
+	*** 000188	56 			push	si
+;	regs = -14
+;	sregs = -22
+;	a_receiver = 18
+;	typelen = 16
+;	type = 12
+;	if_number = 10
+;	if_type = 8
+;	if_class = 6
+;|***   union  _REGS regs;
+;|***   struct _SREGS sregs;
+;|*** 
+;|***   _segread(&sregs);
+; Line 189
+	*** 000189	8d 46 ea 		lea	ax,WORD PTR [bp-22]	;sregs
+	*** 00018c	16 			push	ss
+	*** 00018d	50 			push	ax
+	*** 00018e	9a 00 00 00 00 		call	FAR PTR __segread
+	*** 000193	83 c4 04 		add	sp,4
+;|***   regs.h.ah = ACCESS_TYPE;
+; Line 190
+	*** 000196	c6 46 f3 02 		mov	BYTE PTR [bp-13],2
+;|***   regs.h.al = if_class;
+; Line 191
+	*** 00019a	8a 46 06 		mov	al,BYTE PTR [bp+6]	;if_class
+	*** 00019d	88 46 f2 		mov	BYTE PTR [bp-14],al	;regs
+;|***   //regs.x.bx = if_type;
+;|***   regs.x.bx = 0xffff;
+; Line 193
+	*** 0001a0	c7 46 f4 ff ff 		mov	WORD PTR [bp-12],-1	;ffffH
+;|***   regs.h.dl = if_number;
+; Line 194
+	*** 0001a5	8a 46 0a 		mov	al,BYTE PTR [bp+10]	;if_number
+	*** 0001a8	88 46 f8 		mov	BYTE PTR [bp-8],al
+;|***   regs.x.si = FP_OFF(type);
+; Line 195
+	*** 0001ab	8b 46 0c 		mov	ax,WORD PTR [bp+12]	;type
+	*** 0001ae	89 46 fa 		mov	WORD PTR [bp-6],ax
+;|***   sregs.ds = FP_SEG(type);
+; Line 196
+	*** 0001b1	8b 46 0e 		mov	ax,WORD PTR [bp+14]
+	*** 0001b4	89 46 f0 		mov	WORD PTR [bp-16],ax
+;|***   //regs.x.cx = typelen;
+;|***   regs.x.cx = 0;
+; Line 198
+	*** 0001b7	c7 46 f6 00 00 		mov	WORD PTR [bp-10],0
+;|***   sregs.es =  _FP_SEG(a_receiver);
+; Line 199
+	*** 0001bc	8b 46 14 		mov	ax,WORD PTR [bp+20]
+	*** 0001bf	89 46 ea 		mov	WORD PTR [bp-22],ax	;sregs
+;|***   regs.x.di = _FP_OFF(a_receiver);
+; Line 200
+	*** 0001c2	8b 46 12 		mov	ax,WORD PTR [bp+18]	;a_receiver
+	*** 0001c5	89 46 fc 		mov	WORD PTR [bp-4],ax
+;|***   _int86x(PKTDVR, &regs, &regs, &sregs);
+; Line 201
+	*** 0001c8	8d 46 ea 		lea	ax,WORD PTR [bp-22]	;sregs
+	*** 0001cb	16 			push	ss
+	*** 0001cc	50 			push	ax
+	*** 0001cd	8d 46 f2 		lea	ax,WORD PTR [bp-14]	;regs
+	*** 0001d0	16 			push	ss
+	*** 0001d1	50 			push	ax
+	*** 0001d2	16 			push	ss
+	*** 0001d3	50 			push	ax
+	*** 0001d4	6a 7e 			push	126	;007eH
+	*** 0001d6	9a 00 00 00 00 		call	FAR PTR __int86x
+	*** 0001db	83 c4 0e 		add	sp,14	;000eH
+;|***   handle = regs.x.ax;    // handle is global
+; Line 202
+	*** 0001de	8b 46 f2 		mov	ax,WORD PTR [bp-14]	;regs
+	*** 0001e1	a3 00 00 		mov	WORD PTR ?handle@@3HE,ax	;handle
+;|***   //printf("handle: %d\n", handle);
+;|***   if(regs.x.cflag) error_num = regs.h.dh;
+; Line 204
+	*** 0001e4	83 7e fe 00 		cmp	WORD PTR [bp-2],0
+	*** 0001e8	75 03 			jne	$JCC488
+	*** 0001ea	e9 0b 00 		jmp	$I1741
+					$JCC488:
+	*** 0001ed	8a 46 f9 		mov	al,BYTE PTR [bp-7]
+	*** 0001f0	2a e4 			sub	ah,ah
+	*** 0001f2	a3 00 00 		mov	WORD PTR ?error_num@@3HE,ax	;error_num
+;|***   else error_num = 0;
+; Line 205
+	*** 0001f5	e9 06 00 		jmp	$I1742
+					$I1741:
+	*** 0001f8	c7 06 00 00 00 00 	mov	WORD PTR ?error_num@@3HE,0	;error_num
+					$I1742:
+;|***   return(regs.x.cflag);
+; Line 206
+	*** 0001fe	8b 46 fe 		mov	ax,WORD PTR [bp-2]
+	*** 000201	e9 00 00 		jmp	$EX1734
+;|***   }
+; Line 207
+					$EX1734:
+	*** 000204	5e 			pop	si
+	*** 000205	5f 			pop	di
+	*** 000206	c9 			leave	
+	*** 000207	cb 			ret	
+
+?access_type@@ZAHHHHPEDIP7AXIIIIIIIIIIIII@Z@Z	ENDP
+	PUBLIC	?release_type@@ZAHH@Z	; release_type
+?release_type@@ZAHH@Z	PROC FAR	; release_type
+;|*** 
+;|*** int release_type(int rhandle)
+;|***   {
+; Line 210
+	*** 000208	c8 16 00 00 		enter	22,0
+	*** 00020c	57 			push	di
+	*** 00020d	56 			push	si
+;	regs = -14
+;	sregs = -22
+;	rhandle = 6
+;|***   union REGS regs;
+;|***   struct SREGS sregs;
+;|*** 
+;|***   regs.h.ah = 3;
+; Line 214
+	*** 00020e	c6 46 f3 03 		mov	BYTE PTR [bp-13],3
+;|***   regs.x.bx = rhandle;
+; Line 215
+	*** 000212	8b 46 06 		mov	ax,WORD PTR [bp+6]	;rhandle
+	*** 000215	89 46 f4 		mov	WORD PTR [bp-12],ax
+;|***   int86x(PKTDVR, &regs, &regs, &sregs);
+; Line 216
+	*** 000218	8d 46 ea 		lea	ax,WORD PTR [bp-22]	;sregs
+	*** 00021b	16 			push	ss
+	*** 00021c	50 			push	ax
+	*** 00021d	8d 46 f2 		lea	ax,WORD PTR [bp-14]	;regs
+	*** 000220	16 			push	ss
+	*** 000221	50 			push	ax
+	*** 000222	16 			push	ss
+	*** 000223	50 			push	ax
+	*** 000224	6a 7e 			push	126	;007eH
+	*** 000226	9a 00 00 00 00 		call	FAR PTR _int86x
+	*** 00022b	83 c4 0e 		add	sp,14	;000eH
+;|***   last_function = function;
+; Line 217
+	*** 00022e	a1 00 00 		mov	ax,WORD PTR ?function@@3HE	;function
+	*** 000231	a3 00 00 		mov	WORD PTR ?last_function@@3HE,ax	;last_function
+;|***   if(regs.x.cflag) error_num = regs.h.dh;
+; Line 218
+	*** 000234	83 7e fe 00 		cmp	WORD PTR [bp-2],0
+	*** 000238	75 03 			jne	$JCC568
+	*** 00023a	e9 0b 00 		jmp	$I1747
+					$JCC568:
+	*** 00023d	8a 46 f9 		mov	al,BYTE PTR [bp-7]
+	*** 000240	2a e4 			sub	ah,ah
+	*** 000242	a3 00 00 		mov	WORD PTR ?error_num@@3HE,ax	;error_num
+;|***   else error_num = 0;
+; Line 219
+	*** 000245	e9 06 00 		jmp	$I1748
+					$I1747:
+	*** 000248	c7 06 00 00 00 00 	mov	WORD PTR ?error_num@@3HE,0	;error_num
+					$I1748:
+;|***   return(regs.x.cflag);
+; Line 220
+	*** 00024e	8b 46 fe 		mov	ax,WORD PTR [bp-2]
+	*** 000251	e9 00 00 		jmp	$EX1744
+;|***   }
+; Line 221
+					$EX1744:
+	*** 000254	5e 			pop	si
+	*** 000255	5f 			pop	di
+	*** 000256	c9 			leave	
+	*** 000257	cb 			ret	
+
+?release_type@@ZAHH@Z	ENDP
+	PUBLIC	?terminate@@ZAHH@Z	; terminate
+?terminate@@ZAHH@Z	PROC FAR	; terminate
+;|*** 
+;|*** int terminate(int thandle)
+;|***   {
+; Line 224
+	*** 000258	c8 0e 00 00 		enter	14,0
+	*** 00025c	57 			push	di
+	*** 00025d	56 			push	si
+;	regs = -14
+;	thandle = 6
+;|***   union REGS regs;
+;|*** 
+;|***   regs.h.ah = 5;
+; Line 227
+	*** 00025e	c6 46 f3 05 		mov	BYTE PTR [bp-13],5
+;|***   regs.x.bx = handle;
+; Line 228
+	*** 000262	a1 00 00 		mov	ax,WORD PTR ?handle@@3HE	;handle
+	*** 000265	89 46 f4 		mov	WORD PTR [bp-12],ax
+;|***   int86(PKTDVR, &regs, &regs);
+; Line 229
+	*** 000268	8d 46 f2 		lea	ax,WORD PTR [bp-14]	;regs
+	*** 00026b	16 			push	ss
+	*** 00026c	50 			push	ax
+	*** 00026d	16 			push	ss
+	*** 00026e	50 			push	ax
+	*** 00026f	6a 7e 			push	126	;007eH
+	*** 000271	9a 00 00 00 00 		call	FAR PTR _int86
+	*** 000276	83 c4 0a 		add	sp,10	;000aH
+;|***   last_function = function;
+; Line 230
+	*** 000279	a1 00 00 		mov	ax,WORD PTR ?function@@3HE	;function
+	*** 00027c	a3 00 00 		mov	WORD PTR ?last_function@@3HE,ax	;last_function
+;|***   if(regs.x.cflag) error_num = regs.h.dh;
+; Line 231
+	*** 00027f	83 7e fe 00 		cmp	WORD PTR [bp-2],0
+	*** 000283	75 03 			jne	$JCC643
+	*** 000285	e9 0b 00 		jmp	$I1752
+					$JCC643:
+	*** 000288	8a 46 f9 		mov	al,BYTE PTR [bp-7]
+	*** 00028b	2a e4 			sub	ah,ah
+	*** 00028d	a3 00 00 		mov	WORD PTR ?error_num@@3HE,ax	;error_num
+;|***   else error_num = 0;
+; Line 232
+	*** 000290	e9 06 00 		jmp	$I1753
+					$I1752:
+	*** 000293	c7 06 00 00 00 00 	mov	WORD PTR ?error_num@@3HE,0	;error_num
+					$I1753:
+;|***   return(regs.x.cflag);
+; Line 233
+	*** 000299	8b 46 fe 		mov	ax,WORD PTR [bp-2]
+	*** 00029c	e9 00 00 		jmp	$EX1750
+;|***   }
+; Line 234
+					$EX1750:
+	*** 00029f	5e 			pop	si
+	*** 0002a0	5f 			pop	di
+	*** 0002a1	c9 			leave	
+	*** 0002a2	cb 			ret	
+
+?terminate@@ZAHH@Z	ENDP
+	PUBLIC	?get_address@@ZAHHPEEH@Z	; get_address
+?get_address@@ZAHHPEEH@Z	PROC FAR	; get_address
+;|*** 
+;|*** 
+;|*** int get_address(int ghandle, unsigned char far * pad_buf, int len)
+;|***   {
+; Line 238
+	*** 0002a3	c8 16 00 00 		enter	22,0
+	*** 0002a7	57 			push	di
+	*** 0002a8	56 			push	si
+;	regs = -14
+;	sregs = -22
+;	len = 12
+;	pad_buf = 8
+;	ghandle = 6
+;|***   union REGS regs;
+;|***   struct SREGS sregs;
+;|*** 
+;|***   for(i=0;i<6;i++)
+; Line 242
+	*** 0002a9	c7 06 00 00 00 00 	mov	WORD PTR $S1666_i,0
+	*** 0002af	e9 04 00 		jmp	$F1760
+					$FC1761:
+	*** 0002b2	ff 06 00 00 		inc	WORD PTR $S1666_i
+					$F1760:
+	*** 0002b6	83 3e 00 00 06 		cmp	WORD PTR $S1666_i,6
+	*** 0002bb	7c 03 			jl	$JCC699
+	*** 0002bd	e9 0c 00 		jmp	$FB1762
+					$JCC699:
+;|***     {
+; Line 243
+;|***     addr_buf[i] = 0;
+; Line 244
+	*** 0002c0	8b 1e 00 00 		mov	bx,WORD PTR $S1666_i
+	*** 0002c4	c6 87 00 00 00 		mov	BYTE PTR ?addr_buf@@3QEEE[bx],0	;addr_buf
+;|***     }
+; Line 245
+	*** 0002c9	e9 e6 ff 		jmp	$FC1761
+					$FB1762:
+;|***   regs.h.ah = 6;
+; Line 246
+	*** 0002cc	c6 46 f3 06 		mov	BYTE PTR [bp-13],6
+;|***   regs.x.bx = ghandle;
+; Line 247
+	*** 0002d0	8b 46 06 		mov	ax,WORD PTR [bp+6]	;ghandle
+	*** 0002d3	89 46 f4 		mov	WORD PTR [bp-12],ax
+;|***   sregs.es = FP_SEG(pad_buf);
+; Line 248
+	*** 0002d6	8b 46 0a 		mov	ax,WORD PTR [bp+10]
+	*** 0002d9	89 46 ea 		mov	WORD PTR [bp-22],ax	;sregs
+;|***   regs.x.di = FP_OFF(pad_buf);
+; Line 249
+	*** 0002dc	8b 46 08 		mov	ax,WORD PTR [bp+8]	;pad_buf
+	*** 0002df	89 46 fc 		mov	WORD PTR [bp-4],ax
+;|***   regs.x.cx = 6;
+; Line 250
+	*** 0002e2	c7 46 f6 06 00 		mov	WORD PTR [bp-10],6
+;|***   int86x(PKTDVR, &regs, &regs, &sregs);
+; Line 251
+	*** 0002e7	8d 46 ea 		lea	ax,WORD PTR [bp-22]	;sregs
+	*** 0002ea	16 			push	ss
+	*** 0002eb	50 			push	ax
+	*** 0002ec	8d 46 f2 		lea	ax,WORD PTR [bp-14]	;regs
+	*** 0002ef	16 			push	ss
+	*** 0002f0	50 			push	ax
+	*** 0002f1	16 			push	ss
+	*** 0002f2	50 			push	ax
+	*** 0002f3	6a 7e 			push	126	;007eH
+	*** 0002f5	9a 00 00 00 00 		call	FAR PTR _int86x
+	*** 0002fa	83 c4 0e 		add	sp,14	;000eH
+;|***   /*printf("Address length: %d\n", regs.x.cx);
+;|***   printf("ES: %d\n", sregs.es);
+;|***   printf("DI: %d\n", regs.x.di);
+;|***   printf("FP SEG: %u\n", (unsigned char) FP_SEG(pad_buf));
+;|***   printf("FP OFF: %u\n", (unsigned char) FP_OFF(pad_buf));
+;|***   printf("Address: ");
+;|***   for(i=0; i<6; i++)
+;|***     {
+;|***     printf("%02x ", addr_buf[i]);
+;|***     }
+;|***   printf("\n");
+;|***   last_function = function;
+;|***   */
+;|***   if(regs.x.cflag) error_num = regs.h.dh;
+; Line 265
+	*** 0002fd	83 7e fe 00 		cmp	WORD PTR [bp-2],0
+	*** 000301	75 03 			jne	$JCC769
+	*** 000303	e9 0b 00 		jmp	$I1765
+					$JCC769:
+	*** 000306	8a 46 f9 		mov	al,BYTE PTR [bp-7]
+	*** 000309	2a e4 			sub	ah,ah
+	*** 00030b	a3 00 00 		mov	WORD PTR ?error_num@@3HE,ax	;error_num
+;|***   else error_num = 0;
+; Line 266
+	*** 00030e	e9 06 00 		jmp	$I1766
+					$I1765:
+	*** 000311	c7 06 00 00 00 00 	mov	WORD PTR ?error_num@@3HE,0	;error_num
+					$I1766:
+;|***   return(regs.x.cflag);
+; Line 267
+	*** 000317	8b 46 fe 		mov	ax,WORD PTR [bp-2]
+	*** 00031a	e9 00 00 		jmp	$EX1757
+;|***   }
+; Line 268
+					$EX1757:
+	*** 00031d	5e 			pop	si
+	*** 00031e	5f 			pop	di
+	*** 00031f	c9 			leave	
+	*** 000320	cb 			ret	
+
+?get_address@@ZAHHPEEH@Z	ENDP
+	PUBLIC	?send_pkt@@ZAHPEEI@Z	; send_pkt
+?send_pkt@@ZAHPEEI@Z	PROC FAR	; send_pkt
+;|***   
+;|*** 
+;|*** int send_pkt(unsigned char far *ptbuffer, unsigned tlength)
+;|***   {
+; Line 272
+	*** 000321	c8 16 00 00 		enter	22,0
+	*** 000325	57 			push	di
+	*** 000326	56 			push	si
+;	regs = -14
+;	sregs = -22
+;	tlength = 10
+;	ptbuffer = 6
+;|***   union REGS regs;
+;|***   struct SREGS sregs;
+;|*** 
+;|***   segread(&sregs);
+; Line 276
+	*** 000327	8d 46 ea 		lea	ax,WORD PTR [bp-22]	;sregs
+	*** 00032a	16 			push	ss
+	*** 00032b	50 			push	ax
+	*** 00032c	9a 00 00 00 00 		call	FAR PTR _segread
+	*** 000331	83 c4 04 		add	sp,4
+;|***   regs.h.ah = 4;
+; Line 277
+	*** 000334	c6 46 f3 04 		mov	BYTE PTR [bp-13],4
+;|***   sregs.ds = FP_SEG(ptbuffer);
+; Line 278
+	*** 000338	8b 46 08 		mov	ax,WORD PTR [bp+8]
+	*** 00033b	89 46 f0 		mov	WORD PTR [bp-16],ax
+;|***   regs.x.si = FP_OFF(ptbuffer);
+; Line 279
+	*** 00033e	8b 46 06 		mov	ax,WORD PTR [bp+6]	;ptbuffer
+	*** 000341	89 46 fa 		mov	WORD PTR [bp-6],ax
+;|***   regs.x.cx = tlength;
+; Line 280
+	*** 000344	8b 46 0a 		mov	ax,WORD PTR [bp+10]	;tlength
+	*** 000347	89 46 f6 		mov	WORD PTR [bp-10],ax
+;|***   int86x(PKTDVR, &regs, &regs, &sregs);
+; Line 281
+	*** 00034a	8d 46 ea 		lea	ax,WORD PTR [bp-22]	;sregs
+	*** 00034d	16 			push	ss
+	*** 00034e	50 			push	ax
+	*** 00034f	8d 46 f2 		lea	ax,WORD PTR [bp-14]	;regs
+	*** 000352	16 			push	ss
+	*** 000353	50 			push	ax
+	*** 000354	16 			push	ss
+	*** 000355	50 			push	ax
+	*** 000356	6a 7e 			push	126	;007eH
+	*** 000358	9a 00 00 00 00 		call	FAR PTR _int86x
+	*** 00035d	83 c4 0e 		add	sp,14	;000eH
+;|***   //last_function = function;
+;|***   if(regs.x.cflag) error_num = regs.h.dh;
+; Line 283
+	*** 000360	83 7e fe 00 		cmp	WORD PTR [bp-2],0
+	*** 000364	75 03 			jne	$JCC868
+	*** 000366	e9 0b 00 		jmp	$I1774
+					$JCC868:
+	*** 000369	8a 46 f9 		mov	al,BYTE PTR [bp-7]
+	*** 00036c	2a e4 			sub	ah,ah
+	*** 00036e	a3 00 00 		mov	WORD PTR ?error_num@@3HE,ax	;error_num
+;|***   else error_num = 0;
+; Line 284
+	*** 000371	e9 06 00 		jmp	$I1775
+					$I1774:
+	*** 000374	c7 06 00 00 00 00 	mov	WORD PTR ?error_num@@3HE,0	;error_num
+					$I1775:
+;|***   return(regs.x.cflag);
+; Line 285
+	*** 00037a	8b 46 fe 		mov	ax,WORD PTR [bp-2]
+	*** 00037d	e9 00 00 		jmp	$EX1769
+;|***   }
+; Line 286
+					$EX1769:
+	*** 000380	5e 			pop	si
+	*** 000381	5f 			pop	di
+	*** 000382	c9 			leave	
+	*** 000383	cb 			ret	
+
+?send_pkt@@ZAHPEEI@Z	ENDP
+	PUBLIC	?reset_interface@@ZAHH@Z	; reset_interface
+?reset_interface@@ZAHH@Z	PROC FAR	; reset_interface
+;|*** 
+;|*** 
+;|*** 
+;|*** int reset_interface(int rhandle)
+;|***   {
+; Line 291
+	*** 000384	c8 16 00 00 		enter	22,0
+	*** 000388	57 			push	di
+	*** 000389	56 			push	si
+;	regs = -14
+;	sregs = -22
+;	rhandle = 6
+;|***   union REGS regs;
+;|***   struct SREGS sregs;
+;|*** 
+;|***   regs.h.ah = 7;
+; Line 295
+	*** 00038a	c6 46 f3 07 		mov	BYTE PTR [bp-13],7
+;|***   regs.x.bx = rhandle;
+; Line 296
+	*** 00038e	8b 46 06 		mov	ax,WORD PTR [bp+6]	;rhandle
+	*** 000391	89 46 f4 		mov	WORD PTR [bp-12],ax
+;|***   int86x(PKTDVR, &regs, &regs, &sregs);
+; Line 297
+	*** 000394	8d 46 ea 		lea	ax,WORD PTR [bp-22]	;sregs
+	*** 000397	16 			push	ss
+	*** 000398	50 			push	ax
+	*** 000399	8d 46 f2 		lea	ax,WORD PTR [bp-14]	;regs
+	*** 00039c	16 			push	ss
+	*** 00039d	50 			push	ax
+	*** 00039e	16 			push	ss
+	*** 00039f	50 			push	ax
+	*** 0003a0	6a 7e 			push	126	;007eH
+	*** 0003a2	9a 00 00 00 00 		call	FAR PTR _int86x
+	*** 0003a7	83 c4 0e 		add	sp,14	;000eH
+;|***   last_function = function;
+; Line 298
+	*** 0003aa	a1 00 00 		mov	ax,WORD PTR ?function@@3HE	;function
+	*** 0003ad	a3 00 00 		mov	WORD PTR ?last_function@@3HE,ax	;last_function
+;|***   if(regs.x.cflag) error_num = regs.h.dh;
+; Line 299
+	*** 0003b0	83 7e fe 00 		cmp	WORD PTR [bp-2],0
+	*** 0003b4	75 03 			jne	$JCC948
+	*** 0003b6	e9 0b 00 		jmp	$I1780
+					$JCC948:
+	*** 0003b9	8a 46 f9 		mov	al,BYTE PTR [bp-7]
+	*** 0003bc	2a e4 			sub	ah,ah
+	*** 0003be	a3 00 00 		mov	WORD PTR ?error_num@@3HE,ax	;error_num
+;|***   else error_num = 0;
+; Line 300
+	*** 0003c1	e9 06 00 		jmp	$I1781
+					$I1780:
+	*** 0003c4	c7 06 00 00 00 00 	mov	WORD PTR ?error_num@@3HE,0	;error_num
+					$I1781:
+;|***   return(regs.x.cflag);
+; Line 301
+	*** 0003ca	8b 46 fe 		mov	ax,WORD PTR [bp-2]
+	*** 0003cd	e9 00 00 		jmp	$EX1777
+;|***   }
+; Line 302
+					$EX1777:
+	*** 0003d0	5e 			pop	si
+	*** 0003d1	5f 			pop	di
+	*** 0003d2	c9 			leave	
+	*** 0003d3	cb 			ret	
+
+?reset_interface@@ZAHH@Z	ENDP
+	PUBLIC	?get_parameters@@ZAHXZ	; get_parameters
+?get_parameters@@ZAHXZ	PROC FAR	; get_parameters
+;|*** 
+;|*** 
+;|*** 
+;|*** int get_parameters(void)
+;|***   {
+; Line 307
+	*** 0003d4	c8 1a 00 00 		enter	26,0
+	*** 0003d8	57 			push	di
+	*** 0003d9	56 			push	si
+;	regs = -14
+;	sregs = -22
+;	param = -26
+;|***   union REGS regs;
+;|***   struct SREGS sregs;
+;|***   char far * param;
+;|*** 
+;|***   regs.h.ah = 10;
+; Line 312
+	*** 0003da	c6 46 f3 0a 		mov	BYTE PTR [bp-13],10	;000aH
+;|***   int86x(PKTDVR, &regs, &regs, &sregs);
+; Line 313
+	*** 0003de	8d 46 ea 		lea	ax,WORD PTR [bp-22]	;sregs
+	*** 0003e1	16 			push	ss
+	*** 0003e2	50 			push	ax
+	*** 0003e3	8d 4e f2 		lea	cx,WORD PTR [bp-14]	;regs
+	*** 0003e6	16 			push	ss
+	*** 0003e7	51 			push	cx
+	*** 0003e8	16 			push	ss
+	*** 0003e9	51 			push	cx
+	*** 0003ea	6a 7e 			push	126	;007eH
+	*** 0003ec	9a 00 00 00 00 		call	FAR PTR _int86x
+	*** 0003f1	83 c4 0e 		add	sp,14	;000eH
+;|***   param = (char far *)MK_FP(sregs.es, regs.x.di);
+; Line 314
+	*** 0003f4	8b 46 ea 		mov	ax,WORD PTR [bp-22]	;sregs
+	*** 0003f7	8b 4e fc 		mov	cx,WORD PTR [bp-4]
+	*** 0003fa	89 4e e6 		mov	WORD PTR [bp-26],cx	;param
+	*** 0003fd	89 46 e8 		mov	WORD PTR [bp-24],ax
+;|***   /*
+;|***   printf("major rev: %d\n",          (unsigned char) param[0]);
+;|***   printf("minor rev: %d\n",          (unsigned char) param[1]);
+;|***   printf("param struct length: %d\n",(unsigned char) param[2]);
+;|***   printf("addr length length: %d\n", (unsigned char) param[3]);
+;|***   printf("mtu: %d\n",                (unsigned char) param[4] +
+;|***                                     ((unsigned char) param[5]) *256);
+;|***   printf("multicast aval: %d\n",     (unsigned char) param[6] +
+;|***                                     ((unsigned char) param[7]) *256);
+;|***   printf("rcv bufs: %d\n",           (unsigned char) param[8] +
+;|***                                     ((unsigned char) param[9]) *256);
+;|***   printf("xmt bufs: %d\n",           (unsigned char) param[10] +
+;|***                                     ((unsigned char) param[11]) *256);
+;|***   printf("int num: %d\n",            (unsigned char) param[12] +
+;|***                                     ((unsigned char) param[13]) *256);
+;|***   last_function = function;
+;|***   */
+;|***   if(regs.x.cflag) error_num = regs.h.dh;
+; Line 332
+	*** 000400	83 7e fe 00 		cmp	WORD PTR [bp-2],0
+	*** 000404	75 03 			jne	$JCC1028
+	*** 000406	e9 0b 00 		jmp	$I1792
+					$JCC1028:
+	*** 000409	8a 46 f9 		mov	al,BYTE PTR [bp-7]
+	*** 00040c	2a e4 			sub	ah,ah
+	*** 00040e	a3 00 00 		mov	WORD PTR ?error_num@@3HE,ax	;error_num
+;|***   else error_num = 0;
+; Line 333
+	*** 000411	e9 06 00 		jmp	$I1793
+					$I1792:
+	*** 000414	c7 06 00 00 00 00 	mov	WORD PTR ?error_num@@3HE,0	;error_num
+					$I1793:
+;|***   return(regs.x.cflag);
+; Line 334
+	*** 00041a	8b 46 fe 		mov	ax,WORD PTR [bp-2]
+	*** 00041d	e9 00 00 		jmp	$EX1783
+;|***   }
+; Line 335
+					$EX1783:
+	*** 000420	5e 			pop	si
+	*** 000421	5f 			pop	di
+	*** 000422	c9 			leave	
+	*** 000423	cb 			ret	
+
+?get_parameters@@ZAHXZ	ENDP
+	PUBLIC	?as_send_pkt@@ZAHPEEIP7AXPEDH@Z@Z	; as_send_pkt
+?as_send_pkt@@ZAHPEEIP7AXPEDH@Z@Z	PROC FAR	; as_send_pkt
+;|*** 
+;|*** 
+;|*** int as_send_pkt(unsigned char far *ptbuffer, unsigned tlength, void (far *upcall)(char far *,int))
+;|***   {
+; Line 339
+	*** 000424	c8 16 00 00 		enter	22,0
+	*** 000428	57 			push	di
+	*** 000429	56 			push	si
+;	regs = -14
+;	sregs = -22
+;	upcall = 12
+;	tlength = 10
+;	ptbuffer = 6
+;|***   union REGS regs;
+;|***   struct SREGS sregs;
+;|*** 
+;|***   segread(&sregs);
+; Line 343
+	*** 00042a	8d 46 ea 		lea	ax,WORD PTR [bp-22]	;sregs
+	*** 00042d	16 			push	ss
+	*** 00042e	50 			push	ax
+	*** 00042f	9a 00 00 00 00 		call	FAR PTR _segread
+	*** 000434	83 c4 04 		add	sp,4
+;|***   regs.h.ah = 11;
+; Line 344
+	*** 000437	c6 46 f3 0b 		mov	BYTE PTR [bp-13],11	;000bH
+;|***   sregs.ds = FP_SEG(ptbuffer);
+; Line 345
+	*** 00043b	8b 46 08 		mov	ax,WORD PTR [bp+8]
+	*** 00043e	89 46 f0 		mov	WORD PTR [bp-16],ax
+;|***   regs.x.si = FP_OFF(ptbuffer);
+; Line 346
+	*** 000441	8b 46 06 		mov	ax,WORD PTR [bp+6]	;ptbuffer
+	*** 000444	89 46 fa 		mov	WORD PTR [bp-6],ax
+;|***   regs.x.cx = tlength;
+; Line 347
+	*** 000447	8b 46 0a 		mov	ax,WORD PTR [bp+10]	;tlength
+	*** 00044a	89 46 f6 		mov	WORD PTR [bp-10],ax
+;|***   sregs.es = FP_SEG(upcall);
+; Line 348
+	*** 00044d	8b 46 0e 		mov	ax,WORD PTR [bp+14]
+	*** 000450	89 46 ea 		mov	WORD PTR [bp-22],ax	;sregs
+;|***   regs.x.di = FP_OFF(upcall);
+; Line 349
+	*** 000453	8b 46 0c 		mov	ax,WORD PTR [bp+12]	;upcall
+	*** 000456	89 46 fc 		mov	WORD PTR [bp-4],ax
+;|***   int86x(PKTDVR, &regs, &regs, &sregs);
+; Line 350
+	*** 000459	8d 46 ea 		lea	ax,WORD PTR [bp-22]	;sregs
+	*** 00045c	16 			push	ss
+	*** 00045d	50 			push	ax
+	*** 00045e	8d 46 f2 		lea	ax,WORD PTR [bp-14]	;regs
+	*** 000461	16 			push	ss
+	*** 000462	50 			push	ax
+	*** 000463	16 			push	ss
+	*** 000464	50 			push	ax
+	*** 000465	6a 7e 			push	126	;007eH
+	*** 000467	9a 00 00 00 00 		call	FAR PTR _int86x
+	*** 00046c	83 c4 0e 		add	sp,14	;000eH
+;|***   //last_function = function;
+;|***   if(regs.x.cflag) error_num = regs.h.dh;
+; Line 352
+	*** 00046f	83 7e fe 00 		cmp	WORD PTR [bp-2],0
+	*** 000473	75 03 			jne	$JCC1139
+	*** 000475	e9 0b 00 		jmp	$I1806
+					$JCC1139:
+	*** 000478	8a 46 f9 		mov	al,BYTE PTR [bp-7]
+	*** 00047b	2a e4 			sub	ah,ah
+	*** 00047d	a3 00 00 		mov	WORD PTR ?error_num@@3HE,ax	;error_num
+;|***   else error_num = 0;
+; Line 353
+	*** 000480	e9 06 00 		jmp	$I1807
+					$I1806:
+	*** 000483	c7 06 00 00 00 00 	mov	WORD PTR ?error_num@@3HE,0	;error_num
+					$I1807:
+;|***   //return(regs.x.cflag);
+;|***   return error_num;
+; Line 355
+	*** 000489	a1 00 00 		mov	ax,WORD PTR ?error_num@@3HE	;error_num
+	*** 00048c	e9 00 00 		jmp	$EX1799
+;|***   }
+; Line 356
+					$EX1799:
+	*** 00048f	5e 			pop	si
+	*** 000490	5f 			pop	di
+	*** 000491	c9 			leave	
+	*** 000492	cb 			ret	
+
+?as_send_pkt@@ZAHPEEIP7AXPEDH@Z@Z	ENDP
+	PUBLIC	?upcall@@ZAXPEDH@Z	; upcall
+?upcall@@ZAXPEDH@Z	PROC FAR	; upcall
+;|*** 
+;|*** void upcall(char far *buffer, int result)
+;|***   {
+; Line 359
+	*** 000493	c8 00 00 00 		enter	0,0
+	*** 000497	57 			push	di
+	*** 000498	56 			push	si
+;	result = 10
+;	buffer = 6
+;|***   }
+; Line 360
+	*** 000499	e9 00 00 		jmp	$EX1810
+					$EX1810:
+	*** 00049c	5e 			pop	si
+	*** 00049d	5f 			pop	di
+	*** 00049e	c9 			leave	
+	*** 00049f	cb 			ret	
+
+?upcall@@ZAXPEDH@Z	ENDP
+	PUBLIC	?receiver@@ZAXIIIIIIIIIIIII@Z	; receiver
+?receiver@@ZAXIIIIIIIIIIIII@Z	PROC FAR	; receiver
+;|*** 
+;|*** void interrupt far receiver(unsigned es, unsigned ds, unsigned di, unsigned si,
+;|***                             unsigned bp, unsigned sp, unsigned bx, unsigned dx,
+;|***                             unsigned cx, unsigned ax, unsigned ip, unsigned cs,
+;|***                             unsigned flags)
+;|***   {
+; Line 366
+	*** 0004a0	60 			pusha
+	*** 0004a1	1e 			push	ds
+	*** 0004a2	06 			push	es
+	*** 0004a3	8b ec 			mov	bp,sp
+	*** 0004a5	81 ec 04 00 		sub	sp,4
+	*** 0004a9	1e 			push	ds
+	*** 0004aa	b8 00 00 		mov	ax,DGROUP
+	*** 0004ad	8e d8 			mov	ds,ax
+	ASSUME DS: DGROUP
+	*** 0004af	fc 			cld	
+;	lsb = -2
+;	msb = -4
+;	flags = 24
+;	cs = 22
+;	ip = 20
+;	ax = 18
+;	cx = 16
+;	dx = 14
+;	bx = 12
+;	sp = 10
+;	bp = 8
+;	si = 6
+;	di = 4
+;	ds = 2
+;	es = 0
+;|***   unsigned int lsb = 0;
+; Line 367
+	*** 0004b0	c7 46 fe 00 00 		mov	WORD PTR [bp-2],0	;lsb
+;|***   unsigned int msb = 0;
+; Line 368
+	*** 0004b5	c7 46 fc 00 00 		mov	WORD PTR [bp-4],0	;msb
+;|***   
+;|***   receiver_calls++;
+; Line 370
+	*** 0004ba	83 06 00 00 01 		add	WORD PTR ?receiver_calls@@3KE,1	;receiver_calls
+	*** 0004bf	83 16 02 00 00 		adc	WORD PTR ?receiver_calls@@3KE+2,0	;receiver_calls
+;|***   packet_len = 0;
+; Line 371
+	*** 0004c4	c7 06 00 00 00 00 	mov	WORD PTR ?packet_len@@3HE,0	;packet_len
+;|***   if(packet_len || (cx > sizeof(rxbuf)/sizeof(rxbuf[0])))
+; Line 372
+	*** 0004ca	83 3e 00 00 00 		cmp	WORD PTR ?packet_len@@3HE,0	;packet_len
+	*** 0004cf	74 03 			je	$JCC1231
+	*** 0004d1	e9 0a 00 		jmp	$I1828
+					$JCC1231:
+	*** 0004d4	81 7e 10 d0 07 		cmp	WORD PTR [bp+16],2000	;07d0H	;cx
+	*** 0004d9	77 03 			ja	$JCC1241
+	*** 0004db	e9 16 00 		jmp	$I1827
+					$JCC1241:
+					$I1828:
+;|***     {
+; Line 373
+;|***     es = di = 0;
+; Line 374
+	*** 0004de	b8 00 00 		mov	ax,0
+	*** 0004e1	89 46 04 		mov	WORD PTR [bp+4],ax	;di
+	*** 0004e4	89 46 00 		mov	WORD PTR [bp],ax	;es
+;|***     discards++;
+; Line 375
+	*** 0004e7	83 06 00 00 01 		add	WORD PTR ?discards@@3KE,1	;discards
+	*** 0004ec	83 16 02 00 00 		adc	WORD PTR ?discards@@3KE+2,0	;discards
+;|***     }
+; Line 376
+;|***   else
+; Line 377
+	*** 0004f1	e9 c3 00 		jmp	$I1829
+					$I1827:
+;|***     {
+; Line 378
+;|***     if(ax == 0)
+; Line 379
+	*** 0004f4	83 7e 12 00 		cmp	WORD PTR [bp+18],0	;ax
+	*** 0004f8	74 03 			je	$JCC1272
+	*** 0004fa	e9 16 00 		jmp	$I1830
+					$JCC1272:
+;|***       {
+; Line 380
+;|***       es = _FP_SEG(prxbuf);
+; Line 381
+	*** 0004fd	a1 02 00 		mov	ax,WORD PTR ?prxbuf@@3PEEE+2	;prxbuf
+	*** 000500	89 46 00 		mov	WORD PTR [bp],ax	;es
+;|***       di = _FP_OFF(prxbuf);
+; Line 382
+	*** 000503	a1 00 00 		mov	ax,WORD PTR ?prxbuf@@3PEEE	;prxbuf
+	*** 000506	89 46 04 		mov	WORD PTR [bp+4],ax	;di
+;|***       ax0_counter++;
+; Line 383
+	*** 000509	83 06 00 00 01 		add	WORD PTR ?ax0_counter@@3KE,1	;ax0_counter
+	*** 00050e	83 16 02 00 00 		adc	WORD PTR ?ax0_counter@@3KE+2,0	;ax0_counter
+;|***       }
+; Line 384
+;|***     if(ax == 1)
+; Line 385
+					$I1830:
+	*** 000513	83 7e 12 01 		cmp	WORD PTR [bp+18],1	;ax
+	*** 000517	74 03 			je	$JCC1303
+	*** 000519	e9 9b 00 		jmp	$I1833
+					$JCC1303:
+;|***       {
+; Line 386
+;|***       packet_len = cx;
+; Line 387
+	*** 00051c	8b 46 10 		mov	ax,WORD PTR [bp+16]	;cx
+	*** 00051f	a3 00 00 		mov	WORD PTR ?packet_len@@3HE,ax	;packet_len
+;|***       if(  (_fstrnicmp((char *)&rxbuf[0], (char *)&obc_mac[0], 6)==0)
+;|***              && (packet_len < 200) )
+; Line 389
+	*** 000522	6a 06 			push	6
+	*** 000524	1e 			push	ds
+	*** 000525	68 00 00 		push	OFFSET ?obc_mac@@3QEEE	;obc_mac
+	*** 000528	1e 			push	ds
+	*** 000529	68 00 00 		push	OFFSET DGROUP:?rxbuf@@3QEEE	;rxbuf
+	*** 00052c	9a 00 00 00 00 		call	FAR PTR __fstrnicmp
+	*** 000531	83 c4 0a 		add	sp,10	;000aH
+	*** 000534	3d 00 00 		cmp	ax,0
+	*** 000537	74 03 			je	$JCC1335
+	*** 000539	e9 6a 00 		jmp	$I1836
+					$JCC1335:
+	*** 00053c	81 3e 00 00 c8 00 	cmp	WORD PTR ?packet_len@@3HE,200	;00c8H	;packet_len
+	*** 000542	7c 03 			jl	$JCC1346
+	*** 000544	e9 5f 00 		jmp	$I1836
+					$JCC1346:
+;|***         {
+; Line 390
+;|***         _fmemcpy(cmd_buffer, rxbuf, packet_len);
+; Line 391
+	*** 000547	ff 36 00 00 		push	WORD PTR ?packet_len@@3HE	;packet_len
+	*** 00054b	1e 			push	ds
+	*** 00054c	68 00 00 		push	OFFSET DGROUP:?rxbuf@@3QEEE	;rxbuf
+	*** 00054f	68 00 00 		push	SEG ?cmd_buffer@@3QEEE	;cmd_buffer
+	*** 000552	68 00 00 		push	OFFSET ?cmd_buffer@@3QEEE	;cmd_buffer
+	*** 000555	9a 00 00 00 00 		call	FAR PTR __fmemcpy
+	*** 00055a	83 c4 0a 		add	sp,10	;000aH
+;|***         packet_len = 0;
+; Line 392
+	*** 00055d	c7 06 00 00 00 00 	mov	WORD PTR ?packet_len@@3HE,0	;packet_len
+;|***         packets_rcvd++;
+; Line 393
+	*** 000563	83 06 00 00 01 		add	WORD PTR ?packets_rcvd@@3KE,1	;packets_rcvd
+	*** 000568	83 16 02 00 00 		adc	WORD PTR ?packets_rcvd@@3KE+2,0	;packets_rcvd
+;|***         ax1_counter++;
+; Line 394
+	*** 00056d	83 06 00 00 01 		add	WORD PTR ?ax1_counter@@3KE,1	;ax1_counter
+	*** 000572	83 16 02 00 00 		adc	WORD PTR ?ax1_counter@@3KE+2,0	;ax1_counter
+;|***         echo.new_data = 1;
+; Line 395
+ETHER_TEXT      ENDS
+CONST      SEGMENT
+$T1867	DW SEG ?echo@@3UECHO@@E 
+CONST      ENDS
+ETHER_TEXT      SEGMENT
+	ASSUME	CS: ETHER_TEXT
+	*** 000577	8e 06 00 00 		mov	es,WORD PTR $T1867
+	*** 00057b	26 c7 06 00 00 01 00 	mov	WORD PTR es:?echo@@3UECHO@@E,1	;echo
+;|***         echo.frame = frame;
+; Line 396
+	*** 000582	a1 00 00 		mov	ax,WORD PTR ?frame@@3KE	;frame
+	*** 000585	8b 16 02 00 		mov	dx,WORD PTR ?frame@@3KE+2	;frame
+	*** 000589	26 a3 02 00 		mov	WORD PTR es:?echo@@3UECHO@@E+2,ax	;echo
+	*** 00058d	26 89 16 04 00 		mov	WORD PTR es:?echo@@3UECHO@@E+4,dx	;echo
+;|***         time_stamp(&cmds_time);
+; Line 397
+	*** 000592	68 00 00 		push	SEG ?cmds_time@@3UTIMER@@E	;cmds_time
+	*** 000595	68 00 00 		push	OFFSET ?cmds_time@@3UTIMER@@E	;cmds_time
+	*** 000598	9a 00 00 00 00 		call	FAR PTR ?time_stamp@@ZAXPEUTIMER@@@Z	; time_stamp
+	*** 00059d	83 c4 04 		add	sp,4
+;|***         time_since_last_command = 0;
+; Line 398
+	*** 0005a0	c7 06 00 00 00 00 	mov	WORD PTR ?time_since_last_command@@3HE,0	;time_since_last_command
+;|***         }
+; Line 399
+;|***       _fmemset(rxbuf, 0, sizeof(rxbuf));
+; Line 400
+					$I1836:
+	*** 0005a6	68 d0 07 		push	2000	;07d0H
+	*** 0005a9	6a 00 			push	0
+	*** 0005ab	1e 			push	ds
+	*** 0005ac	68 00 00 		push	OFFSET DGROUP:?rxbuf@@3QEEE	;rxbuf
+	*** 0005af	9a 00 00 00 00 		call	FAR PTR __fmemset
+	*** 0005b4	83 c4 08 		add	sp,8
+;|***       }
+; Line 401
+;|***     }
+; Line 402
+					$I1833:
+					$I1829:
+;|***   }
+; Line 403
+	*** 0005b7	e9 00 00 		jmp	$EX1824
+					$EX1824:
+	*** 0005ba	8b e5 			mov	sp,bp
+	*** 0005bc	07 			pop	es
+	*** 0005bd	1f 			pop	ds
+	ASSUME DS: DGROUP
+	*** 0005be	61 			popa
+	*** 0005bf	cf 			iret	
+
+?receiver@@ZAXIIIIIIIIIIIII@Z	ENDP
+	PUBLIC	?set_rcv_mode@@ZAHHH@Z	; set_rcv_mode
+?set_rcv_mode@@ZAHHH@Z	PROC FAR	; set_rcv_mode
+;|*** 
+;|***                            
+;|*** int set_rcv_mode(int set_rcv_handle, int set_rcv_mode)
+;|***   {
+; Line 407
+	*** 0005c0	c8 0e 00 00 		enter	14,0
+	*** 0005c4	57 			push	di
+	*** 0005c5	56 			push	si
+;	regs = -14
+;	set_rcv_mode = 8
+;	set_rcv_handle = 6
+;|***   union REGS regs;
+;|*** 
+;|***   regs.h.ah = SET_RCV_MODE;
+; Line 410
+	*** 0005c6	c6 46 f3 14 		mov	BYTE PTR [bp-13],20	;0014H
+;|***   regs.x.bx = set_rcv_handle;
+; Line 411
+	*** 0005ca	8b 46 06 		mov	ax,WORD PTR [bp+6]	;set_rcv_handle
+	*** 0005cd	89 46 f4 		mov	WORD PTR [bp-12],ax
+;|***   regs.x.cx = set_rcv_mode;
+; Line 412
+	*** 0005d0	8b 46 08 		mov	ax,WORD PTR [bp+8]	;set_rcv_mode
+	*** 0005d3	89 46 f6 		mov	WORD PTR [bp-10],ax
+;|***   int86(PKTDVR, &regs, &regs);
+; Line 413
+	*** 0005d6	8d 46 f2 		lea	ax,WORD PTR [bp-14]	;regs
+	*** 0005d9	16 			push	ss
+	*** 0005da	50 			push	ax
+	*** 0005db	16 			push	ss
+	*** 0005dc	50 			push	ax
+	*** 0005dd	6a 7e 			push	126	;007eH
+	*** 0005df	9a 00 00 00 00 		call	FAR PTR _int86
+	*** 0005e4	83 c4 0a 		add	sp,10	;000aH
+;|***   //last_function = function;
+;|***   if(regs.x.cflag) error_num = regs.h.dh;
+; Line 415
+	*** 0005e7	83 7e fe 00 		cmp	WORD PTR [bp-2],0
+	*** 0005eb	75 03 			jne	$JCC1515
+	*** 0005ed	e9 0b 00 		jmp	$I1841
+					$JCC1515:
+	*** 0005f0	8a 46 f9 		mov	al,BYTE PTR [bp-7]
+	*** 0005f3	2a e4 			sub	ah,ah
+	*** 0005f5	a3 00 00 		mov	WORD PTR ?error_num@@3HE,ax	;error_num
+;|***   else error_num = 0;
+; Line 416
+	*** 0005f8	e9 06 00 		jmp	$I1842
+					$I1841:
+	*** 0005fb	c7 06 00 00 00 00 	mov	WORD PTR ?error_num@@3HE,0	;error_num
+					$I1842:
+;|***   return(regs.x.cflag);
+; Line 417
+	*** 000601	8b 46 fe 		mov	ax,WORD PTR [bp-2]
+	*** 000604	e9 00 00 		jmp	$EX1839
+;|***   }
+; Line 418
+					$EX1839:
+	*** 000607	5e 			pop	si
+	*** 000608	5f 			pop	di
+	*** 000609	c9 			leave	
+	*** 00060a	cb 			ret	
+
+?set_rcv_mode@@ZAHHH@Z	ENDP
+	PUBLIC	?get_rcv_mode@@ZAHH@Z	; get_rcv_mode
+?get_rcv_mode@@ZAHH@Z	PROC FAR	; get_rcv_mode
+;|*** 
+;|*** 
+;|*** int get_rcv_mode(int get_rcv_handle)
+;|***   {
+; Line 422
+	*** 00060b	c8 0e 00 00 		enter	14,0
+	*** 00060f	57 			push	di
+	*** 000610	56 			push	si
+;	regs = -14
+;	get_rcv_handle = 6
+;|***   union REGS regs;
+;|*** 
+;|***   regs.h.ah = GET_RCV_MODE;
+; Line 425
+	*** 000611	c6 46 f3 15 		mov	BYTE PTR [bp-13],21	;0015H
+;|***   regs.x.bx = get_rcv_handle;
+; Line 426
+	*** 000615	8b 46 06 		mov	ax,WORD PTR [bp+6]	;get_rcv_handle
+	*** 000618	89 46 f4 		mov	WORD PTR [bp-12],ax
+;|***   int86(PKTDVR, &regs, &regs);
+; Line 427
+	*** 00061b	8d 46 f2 		lea	ax,WORD PTR [bp-14]	;regs
+	*** 00061e	16 			push	ss
+	*** 00061f	50 			push	ax
+	*** 000620	16 			push	ss
+	*** 000621	50 			push	ax
+	*** 000622	6a 7e 			push	126	;007eH
+	*** 000624	9a 00 00 00 00 		call	FAR PTR _int86
+	*** 000629	83 c4 0a 		add	sp,10	;000aH
+;|***   //last_function = function;
+;|***   if(regs.x.cflag) error_num = regs.h.dh;
+; Line 429
+	*** 00062c	83 7e fe 00 		cmp	WORD PTR [bp-2],0
+	*** 000630	75 03 			jne	$JCC1584
+	*** 000632	e9 0b 00 		jmp	$I1846
+					$JCC1584:
+	*** 000635	8a 46 f9 		mov	al,BYTE PTR [bp-7]
+	*** 000638	2a e4 			sub	ah,ah
+	*** 00063a	a3 00 00 		mov	WORD PTR ?error_num@@3HE,ax	;error_num
+;|***   else error_num = 0;
+; Line 430
+	*** 00063d	e9 06 00 		jmp	$I1847
+					$I1846:
+	*** 000640	c7 06 00 00 00 00 	mov	WORD PTR ?error_num@@3HE,0	;error_num
+					$I1847:
+;|***   return(regs.x.cflag);
+; Line 431
+	*** 000646	8b 46 fe 		mov	ax,WORD PTR [bp-2]
+	*** 000649	e9 00 00 		jmp	$EX1844
+;|***   }
+; Line 432
+					$EX1844:
+	*** 00064c	5e 			pop	si
+	*** 00064d	5f 			pop	di
+	*** 00064e	c9 			leave	
+	*** 00064f	cb 			ret	
+
+?get_rcv_mode@@ZAHH@Z	ENDP
+	PUBLIC	?set_multicast_list@@ZAHPEEH@Z	; set_multicast_list
+?set_multicast_list@@ZAHPEEH@Z	PROC FAR	; set_multicast_list
+;|*** 
+;|*** 
+;|*** int set_multicast_list(unsigned char far * addrlst, int len)
+;|***   {
+; Line 436
+	*** 000650	c8 16 00 00 		enter	22,0
+	*** 000654	57 			push	di
+	*** 000655	56 			push	si
+;	regs = -14
+;	sregs = -22
+;	len = 10
+;	addrlst = 6
+;|***   union REGS regs;
+;|***   struct SREGS sregs;
+;|*** 
+;|***   segread(&sregs);
+; Line 440
+	*** 000656	8d 46 ea 		lea	ax,WORD PTR [bp-22]	;sregs
+	*** 000659	16 			push	ss
+	*** 00065a	50 			push	ax
+	*** 00065b	9a 00 00 00 00 		call	FAR PTR _segread
+	*** 000660	83 c4 04 		add	sp,4
+;|***   regs.h.ah = SET_MULTICAST_LIST;
+; Line 441
+	*** 000663	c6 46 f3 16 		mov	BYTE PTR [bp-13],22	;0016H
+;|***   regs.x.cx = len;
+; Line 442
+	*** 000667	8b 46 0a 		mov	ax,WORD PTR [bp+10]	;len
+	*** 00066a	89 46 f6 		mov	WORD PTR [bp-10],ax
+;|***   sregs.es = FP_SEG(addrlst);
+; Line 443
+	*** 00066d	8b 46 08 		mov	ax,WORD PTR [bp+8]
+	*** 000670	89 46 ea 		mov	WORD PTR [bp-22],ax	;sregs
+;|***   regs.x.di = FP_OFF(addrlst);
+; Line 444
+	*** 000673	8b 46 06 		mov	ax,WORD PTR [bp+6]	;addrlst
+	*** 000676	89 46 fc 		mov	WORD PTR [bp-4],ax
+;|***   int86x(PKTDVR, &regs, &regs, &sregs);
+; Line 445
+	*** 000679	8d 46 ea 		lea	ax,WORD PTR [bp-22]	;sregs
+	*** 00067c	16 			push	ss
+	*** 00067d	50 			push	ax
+	*** 00067e	8d 46 f2 		lea	ax,WORD PTR [bp-14]	;regs
+	*** 000681	16 			push	ss
+	*** 000682	50 			push	ax
+	*** 000683	16 			push	ss
+	*** 000684	50 			push	ax
+	*** 000685	6a 7e 			push	126	;007eH
+	*** 000687	9a 00 00 00 00 		call	FAR PTR _int86x
+	*** 00068c	83 c4 0e 		add	sp,14	;000eH
+;|***   //last_function = function;
+;|***   if(regs.x.cflag) error_num = regs.h.dh;
+; Line 447
+	*** 00068f	83 7e fe 00 		cmp	WORD PTR [bp-2],0
+	*** 000693	75 03 			jne	$JCC1683
+	*** 000695	e9 0b 00 		jmp	$I1855
+					$JCC1683:
+	*** 000698	8a 46 f9 		mov	al,BYTE PTR [bp-7]
+	*** 00069b	2a e4 			sub	ah,ah
+	*** 00069d	a3 00 00 		mov	WORD PTR ?error_num@@3HE,ax	;error_num
+;|***   else error_num = 0;
+; Line 448
+	*** 0006a0	e9 06 00 		jmp	$I1856
+					$I1855:
+	*** 0006a3	c7 06 00 00 00 00 	mov	WORD PTR ?error_num@@3HE,0	;error_num
+					$I1856:
+;|***   return(regs.x.cflag);
+; Line 449
+	*** 0006a9	8b 46 fe 		mov	ax,WORD PTR [bp-2]
+	*** 0006ac	e9 00 00 		jmp	$EX1850
+;|***   }
+; Line 450
+					$EX1850:
+	*** 0006af	5e 			pop	si
+	*** 0006b0	5f 			pop	di
+	*** 0006b1	c9 			leave	
+	*** 0006b2	cb 			ret	
+
+?set_multicast_list@@ZAHPEEH@Z	ENDP
+	PUBLIC	?get_multicast_list@@ZAHXZ	; get_multicast_list
+?get_multicast_list@@ZAHXZ	PROC FAR	; get_multicast_list
+;|*** 
+;|*** 
+;|*** int get_multicast_list(void)
+;|***   {
+; Line 454
+	*** 0006b3	c8 16 00 00 		enter	22,0
+	*** 0006b7	57 			push	di
+	*** 0006b8	56 			push	si
+;	regs = -14
+;	sregs = -22
+;|***   union REGS regs;
+;|***   struct SREGS sregs;
+;|*** 
+;|***   regs.h.ah = GET_MULTICAST_LIST;
+; Line 458
+	*** 0006b9	c6 46 f3 17 		mov	BYTE PTR [bp-13],23	;0017H
+;|***   int86x(PKTDVR, &regs, &regs, &sregs);
+; Line 459
+	*** 0006bd	8d 46 ea 		lea	ax,WORD PTR [bp-22]	;sregs
+	*** 0006c0	16 			push	ss
+	*** 0006c1	50 			push	ax
+	*** 0006c2	8d 46 f2 		lea	ax,WORD PTR [bp-14]	;regs
+	*** 0006c5	16 			push	ss
+	*** 0006c6	50 			push	ax
+	*** 0006c7	16 			push	ss
+	*** 0006c8	50 			push	ax
+	*** 0006c9	6a 7e 			push	126	;007eH
+	*** 0006cb	9a 00 00 00 00 		call	FAR PTR _int86x
+	*** 0006d0	83 c4 0e 		add	sp,14	;000eH
+;|***   //last_function = function;
+;|***   if(regs.x.cflag) error_num = regs.h.dh;
+; Line 461
+	*** 0006d3	83 7e fe 00 		cmp	WORD PTR [bp-2],0
+	*** 0006d7	75 03 			jne	$JCC1751
+	*** 0006d9	e9 0b 00 		jmp	$I1861
+					$JCC1751:
+	*** 0006dc	8a 46 f9 		mov	al,BYTE PTR [bp-7]
+	*** 0006df	2a e4 			sub	ah,ah
+	*** 0006e1	a3 00 00 		mov	WORD PTR ?error_num@@3HE,ax	;error_num
+;|***   else error_num = 0;
+; Line 462
+	*** 0006e4	e9 06 00 		jmp	$I1862
+					$I1861:
+	*** 0006e7	c7 06 00 00 00 00 	mov	WORD PTR ?error_num@@3HE,0	;error_num
+					$I1862:
+;|***   return(regs.x.cflag);
+; Line 463
+	*** 0006ed	8b 46 fe 		mov	ax,WORD PTR [bp-2]
+	*** 0006f0	e9 00 00 		jmp	$EX1858
+;|***   }
+; Line 464
+					$EX1858:
+	*** 0006f3	5e 			pop	si
+	*** 0006f4	5f 			pop	di
+	*** 0006f5	c9 			leave	
+	*** 0006f6	cb 			ret	
+
+?get_multicast_list@@ZAHXZ	ENDP
+	PUBLIC	?print_error@@ZAXH@Z	; print_error
+?print_error@@ZAXH@Z	PROC FAR	; print_error
+;|*** 
+;|*** 
+;|*** void print_error(int err_num)
+;|***   {
+; Line 468
+	*** 0006f7	c8 00 00 00 		enter	0,0
+	*** 0006fb	57 			push	di
+	*** 0006fc	56 			push	si
+;	err_num = 6
+;|***   printf("%s\n", error_msg[err_num]);
+; Line 469
+	*** 0006fd	8b 46 06 		mov	ax,WORD PTR [bp+6]	;err_num
+	*** 000700	8b c8 			mov	cx,ax
+	*** 000702	c1 e0 04 		shl	ax,4
+	*** 000705	2b c1 			sub	ax,cx
+	*** 000707	05 00 00 		add	ax,OFFSET DGROUP:$S1426_error_msg
+	*** 00070a	1e 			push	ds
+	*** 00070b	50 			push	ax
+	*** 00070c	1e 			push	ds
+	*** 00070d	68 00 00 		push	OFFSET DGROUP:$SG1865
+	*** 000710	9a 00 00 00 00 		call	FAR PTR _printf
+	*** 000715	83 c4 08 		add	sp,8
+;|***   err_num = 0;
+; Line 470
+	*** 000718	c7 46 06 00 00 		mov	WORD PTR [bp+6],0	;err_num
+;|***   printf("\n");
+; Line 471
+	*** 00071d	1e 			push	ds
+	*** 00071e	68 00 00 		push	OFFSET DGROUP:$SG1866
+	*** 000721	9a 00 00 00 00 		call	FAR PTR _printf
+	*** 000726	83 c4 04 		add	sp,4
+;|***   }
+; Line 472
+	*** 000729	e9 00 00 		jmp	$EX1864
+					$EX1864:
+	*** 00072c	5e 			pop	si
+	*** 00072d	5f 			pop	di
+	*** 00072e	c9 			leave	
+	*** 00072f	cb 			ret	
+
+?print_error@@ZAXH@Z	ENDP
+ETHER_TEXT	ENDS
+END
+;|*** 

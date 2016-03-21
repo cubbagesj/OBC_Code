@@ -1,0 +1,1897 @@
+/*    cb2001.cpp
+      FOR:  CB6
+  
+      Main module for CB2001 project
+
+      John Maurer
+      NSWC-CD Code 5600
+      RCM Lab
+      5/10/2001
+
+      Notes:
+      1)  Compile and link with MSVC++ v1.52c, huge memory model.
+      2)  Link with UIO48, CESCC, LN200, DMM32, TE5650.
+      3)  Uses Tech80 motion controllers for prop position only
+      4)  01/18/2000  Load CB2000 onto CB2001 and begin troubleshooting
+      5)  02/01/2002  Load code onto CB6 and begin troubleshooting
+      6)  02/01/2002  CB6 - New CAVE-80 board requires three DAC outputs
+          from TECH80 for actuator control.
+
+*/
+
+#include <string.h>
+#include <conio.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <graph.h>
+#include <time.h>
+#include <malloc.h>
+#include <dos.h>
+#include <bios.h>
+#include <iostream.h>
+#include <math.h>
+
+#include "cb2000.h"
+#include "cescc.h"     // communications controller
+#include "dmm32.h"     // adc
+#include "ln200.h"     // gyro
+#include "uio48.h"     // dio
+extern "C"
+  {
+  #include "te5650.h"  // motion controller
+  }
+
+Cescc escc1;          // Comtech escc object for data communications
+Dmm32 dmm32;          // Diamond dmm32 A/D object
+Uio48 uio48;          // LBC586 DIO functions
+
+int c;
+  
+int data[65];         // raw data collected from ln200 and adc's
+long int data2[144];       // scaled data to be sent thru pcm stream
+int data3[144];       // left adjusted data to be stored in obc disk file
+
+char buffer[80];      // general purpose text string
+char tbuffer1[64];    // data to be tx'd thru escc to ln200
+char rbuffer[64];     // data received from ln200 thru escc
+char pcm[96];         // data to be tx'd thru escc to pcm stream
+char header[2048];    // header info for zeros and run files
+
+int icmd[7];          // used to build ln200 query commands
+int latitude, heading;   // initialization parameters for ln200
+int x_axis, y_axis, z_axis;   // boresight rotations for ln200
+int latitude_valid, heading_valid, boresights_valid;    //more for ln200
+int mode = 0;   // ln200 operating mode
+int bit  = 0;   // built-in-test flag for ln200
+int direction;  // heading east/west, north/south
+char bearing0[8], bearing1[8];  // ln200 startup bearing stored on disk
+
+long unsigned frame = 0;  // data frame counter
+long unsigned zeros_terminate = 0;
+long unsigned run_terminate = 0;
+unsigned channela, channelb;  // escc channel identifiers
+
+int status_word    = 0; // system status word to be written to disk data file
+int in_fm_failsafe = 1; // flags when fm failsafe signal is out of range
+int in_hw_failsafe = 0; // flags when fs logic signals in-fs
+int zeros_complete = 0; // flags that zeros have been taken but data run has not occured
+int data_complete  = 1; // flags that data run has been completed
+int cage_complete  = 0; // flags that gyro has been caged after a completed data run
+int taking_zeros   = 0; // flags systems to begin taking zeros
+int taking_data    = 0; // flags system to take data
+int tracker_sync   = 0;
+
+ // tech80 variables
+long  axis6_index      = 0;
+long  axis6_position   = 0;
+ 
+//int set_counter =0;    // for rudder calibration
+
+char data_name[80];     //string to hold name of current data file
+char zero_name[80];     //string to hold name of current zeros file
+char datebuffer[9];     //system date in ascii format
+char timebuffer[9];     //system time in ascii format
+
+char d_name[50][20];
+char z_name[50][20];
+
+unsigned value; 
+int run_number = 1;
+
+FILE *datafile, *data_namefile; // file handles for the data storage files
+                                // and the data storage name file   
+FILE *zerofile, *zero_namefile; // file handles for the zeros storage files                          
+                                // and zeros storage name file
+FILE *bearingfile;              // stores startup heading for ln200
+
+void main()
+  {
+  
+  unsigned i, j, k;
+ 
+  struct escc_regs settings;      // local mirror of the escc registers 
+
+  // get the initial run headings for the LN200 
+  if((bearingfile = fopen("c:\\bearings.txt", "rt")) == NULL)
+    {
+    cout << "Failed to open bearings file" << endl;
+    terminate_program();
+    }
+  fscanf(bearingfile, "%s%s", bearing0, bearing1);
+  cout << "Bearing0 = " << bearing0 << endl << "Bearing1 = " << bearing1 << endl;
+  fclose(bearingfile);
+  
+  _clearscreen(_GCLEARSCREEN);             
+  cout << "Program CB2000" << endl << endl;
+  
+  //  get the names of the run files from an ascii file on disk 
+  if((data_namefile = fopen("c:\\dnames.txt", "rt"))==NULL)
+    {
+    cout << "Error opening Data Names File" << endl; 
+    terminate_program();
+    }
+  else
+    {
+    cout << "Open Data Names File." << endl;
+    }
+  for(i=0; i<50; i++)
+    {
+    fscanf(data_namefile, "%s", d_name[i]);
+    }  
+  fclose(data_namefile);   
+   
+  //  get the names of the zeros files
+  if((zero_namefile = fopen("c:\\znames.txt", "rt"))==NULL)
+    {
+    cout << "Error opening Zero Names File" << endl;
+    terminate_program();
+    }
+  else
+    {
+    cout << "Open Zero Names File." << endl;
+    }
+  for(i=0; i<50; i++)
+    {
+    fscanf(zero_namefile, "%s", z_name[i]);
+    }  
+  fclose(zero_namefile);   
+   
+  reset_ln200();        // apply a Power On Reset to the ln200
+  
+  zero_buffers();       // overwrite lingering garbage with zeros
+  
+  init_tech80();        // configure one TECH-80 5950b motion controllers  //5/7/01
+
+  // configure the Comtech ESCC communications controller
+  // to connect to the LN200 (channel A) and the pcm telemetry stream (channel B).
+  // open the two escc communications ports using add_port() function
+  // parameters: (base address of escc board,
+  //              escc channel 0 or 1,
+  //              IRQ setting,   
+  //              dma channel for receive,  
+  //              dma channel for transmit)
+  // channel A first, to communicate with the LN200                  
+  channela = escc1.add_port(0x240,0,5,0,0);  //IRQ 5, no dma
+  cout << "Channel A = " << hex << channela << dec <<endl;
+  // channel B next, to transmit the pcm telemetry
+  channelb = escc1.add_port(0x240,1,5,1,5);  //IRQ 5, Rx=DMA1, Tx=DMA5
+  cout << "Channel B = " << hex << channelb << dec <<endl;
+  
+  // assemble configuration data for channel_a for LN200 SDLC operation.
+  // see Siemens SAB 82532 ESCC User's Manual page 110.
+  settings.mode = 0x88;   // transparent 0 frames, receiver active
+  settings.timr = 0x1f;   // for cb98
+  settings.xbcl = 0x00;   // n/a for interrupt mode
+  settings.xbch = 0x00;   // interrupt mode (no dma)
+  settings.ccr0 = 0x80;   // for cb98
+  settings.ccr1 = 0x10;   // txd push-pull, one's insertion, clk mode 0 (use LN200 clock)
+  settings.ccr2 = 0x00;   // normal txd/rxd, ssel=0 (clk mode 0a), crc-ccitt, no inversion (LN200 mode) 
+  settings.ccr3 = 0x00;   // no preamble, rx crc off, tx crc generated internally
+  settings.ccr4 = 0x00;   // 
+  settings.bgr  = 0x00;   // 
+  settings.iva  = 0x00;   // 
+  settings.ipc  = 0x03;   // masked interrupts NOT visible, pin INT = push/pull active high
+  settings.imr0 = 0x04;   // cdsc disabled
+  settings.imr1 = 0x00;   // all interrupts enabled 
+  settings.pvr  = 0x00;   //
+  settings.pim  = 0xff;
+  settings.pcr  = 0xe0;
+  settings.xad1 = 0xff;
+  settings.xad2 = 0xff;
+  settings.rah1 = 0xff;
+  settings.rah2 = 0xff;
+  settings.ral1 = 0xff;
+  settings.ral2 = 0xff;
+  settings.rlcr = 0x00;
+  settings.pre  = 0x00;
+    
+  // write configuration data to escc channel a registers
+  // parameters:(port to intialize,
+  //             operating mode,
+  //             settings defined above,
+  //             number of receive buffers,
+  //             number of transmit buffers)
+  if(escc1.init_port(channela,OPMODE_HDLC,&settings,2,2)==TRUE)
+    cout << "Intialize Channel A OK." << endl;
+  else
+    {
+    cout << "Initialize Channel A FAILED!" << endl;
+    terminate_program();
+    }
+  
+  // test channel a to make sure it opened
+  if(escc1.clear_rx_buffer(channela)==TRUE)
+    cout << "Channel A rx buffer cleared OK.  " << endl;
+  else
+    {
+    cout << "Channel A rx buffer clear FAILED!" << endl;
+    terminate_program();
+    }
+
+  if(escc1.clear_tx_buffer(channela)==TRUE)
+    cout << "Channel A tx buffer cleared OK." << endl;
+  else
+    {
+    cout << "Channel A tx buffer clear FAILED!" << endl;
+    terminate_program();
+    }
+  
+  // set channel a frame transmission type
+  if(escc1.set_tx_type(channela, TRANSPARENT_MODE)==TRUE)
+    cout << "Channel A set to Transparent Mode.  " << endl;
+  else
+    {
+    cout << "Channel A Transparent Mode not set!  Channel not open!" << endl;
+    terminate_program();
+    }
+
+  // Channel b will run off the escc internal oscillator, so must first
+  // configure the escc frequency generator to produce a 9.8304 MHz clock signal
+  // from the onboard 18.432 MHz TTL oscillator.
+  //
+  // The 9.8304 MHz clock is used as the master clock for the pcm
+  // data stream and controls the overall data frame timing in the model.
+  //
+  // See escc.cpp, Cypress ICD2053B datasheet and BitCalc software
+  // available at the Cypress Web site to calculate the clock scaling factor
+  // to be loaded into the clock generator.
+  //
+  // void Cescc::set_clock_generator(unsigned port,    //either channel A or B
+  //                                unsigned long hval,//stuffed hex value obtained from BitCalc
+  //                                unsigned nmbits)   //number of bits in stuffed value from BitCalc
+  escc1.set_clock_generator(channela, 0x5d31c0L, 0x18);
+  
+  // Configure channel_b for biphase-m operation for pcm telemetry.
+  // see Siemens SAB 82532 ESCC User's Manual page 110.
+  settings.mode = 0xC8;  // extended transparent mode 0, rcvr inactive, extern timer k=32768
+  settings.timr = 0xe2;  // cnt=7, value=2, continuous 100 Hz interrupts when tcp=1/9.8304MHz
+  settings.xbcl = 0x00;  // n/a in interrupt mode
+  settings.xbch = 0x80;  // n/a in interrupt mode (no dma)
+  // Note:  ESCC User's manual p 110 has switched FM0 & FM1.  Actually FM0 = 100, FM1 = 101
+  settings.ccr0 = 0xD0;  // power-up, master clk=xtal, FM1(biphase-m), hdlc/sdlc
+  settings.ccr1 = 0x17;  // set txd push-pull, set clk mode 7
+  settings.ccr2 = 0x38;  // br9&8=0, bdf=1, ssel=1, toe=1, rwx=0, crc-ccitt, no inversion
+  settings.ccr3 = 0x02;  // no preamble, radd=0, crl=0, rxrc=off, xcrc=1(off), psd=na
+  settings.ccr4 = 0x00;  // added to implement MCK4 and EBRG, but not used
+  settings.bgr  = 0x3f;  // brg divisor=63 (3F hex) 76.8 KHz = 9.8304 MHz /( (63+1)*2 )
+  settings.iva  = 0x00;  // not set here?
+  settings.ipc  = 0x03;  // masked (disabled) interrupts NOT visible, pin INT = push/pull active high
+  settings.imr0 = 0x00;  // all interrupts enabled
+  settings.imr1 = 0x00;  // all interrupts enabled
+  settings.pvr  = 0x00;  
+  settings.pim  = 0xff;
+  settings.pcr  = 0xe0;
+  settings.xad1 = 0xff;
+  settings.xad2 = 0xff;
+  settings.rah1 = 0xff;
+  settings.rah2 = 0xff;
+  settings.ral1 = 0xff;
+  settings.ral2 = 0xff;
+  settings.rlcr = 0x00;
+  settings.pre  = 0x00;
+  
+  //Write configuration to channelb registers
+  //Parameters: (port to intialize,
+  //             operating mode,
+  //             settings defined above,
+  //             number of receive buffers,
+  //             number of transmit buffers)
+  if(escc1.init_port(channelb,OPMODE_HDLC,&settings,MAX_RBUFS,MAX_TBUFS)==TRUE)
+    cout << "Intialize Channel B OK." << endl;
+  else
+    {
+    cout << "Initialize Channel B FAILED!" << endl;
+    terminate_program();
+    }
+  
+  // test channelb to make sure it opened
+  if(escc1.clear_rx_buffer(channelb)==TRUE)
+    cout << "Channel B rx buffer cleared OK.  " << endl;
+  else
+    {
+    cout << "Channel B rx buffer clear FAILED!" << endl;
+    terminate_program();
+    }
+  
+  if(escc1.clear_tx_buffer(channelb)==TRUE)
+    cout << "Channel B tx buffer cleared OK." << endl;
+  else
+    {
+    cout << "Channel B tx buffer clear FAILED!" << endl;
+    terminate_program();
+    }
+  
+  //set channelb frame transmission type
+  if(escc1.set_tx_type(channelb, TRANSPARENT_MODE)==TRUE)
+    cout << "Channel B set to Transparent Mode.  " << endl;
+  else
+    {
+    cout << "Channel B Transparent Mode not set!  Channel not open!" << endl;
+    terminate_program();
+    }
+    
+  cout << endl;  
+  cout << "********** Press <Space Bar> to terminate CB2000 ONLY *********" << endl;
+  cout << "***** Press <t> to terminate CB2000 and DYNO to DUMP DATA *****" << endl;  
+  cout << endl;
+   
+  // The escc communications controller is now ready to go.
+  // Query the ln200 to set initial latitude, heading, boresights, gyro mode
+  mode = 1;  // fast levelling mode, used while CAGED
+  prep_ln200_command(HEADING_VALID); // build the ln200 initialization command
+  
+//  test:
+  j = escc1.tx_port(channela, tbuffer1, 14); // and send it to the ln200
+  cout << "Query LN200" << endl;
+//  sleep(100);
+//  goto test;
+  
+  // wait for ln200 response
+  long unsigned x;
+  x = 0;    
+  while((j = escc1.rx_port(channela, rbuffer, 64)) != 33)
+    {
+    if(++x>10000000)  // time-out loop provides soft crash if no response
+      {             // from LN200
+      cout << "No response from LN200." << endl;
+      terminate_program();
+      }
+     }
+  k = j;  // k is the number of bytes received in rbuffer
+  cout << "LN200 received." << endl;
+
+
+//******************************IDLE LOOP********************************
+//  This 10msec loop executes repeatedly after configuration is complete.
+//  Loop timing is crystal controlled by the rate at which the escc can transmit pcm
+//  data up the telemetry link.
+  while(!kbhit())  // program will execute until you hit any keystroke
+    {
+    run_pinger();
+    cout << "1\r" << flush;
+      
+    perform_common_tasks();  // transmit pcm data, trigger a/d converters,
+                             // collect command data, process fm commands,
+                             // control ballast and planes
+    
+    cout << "2\r" << flush;
+    
+    // wait for the pcm tx fifo to drain before starting new data frame;
+    // this provides the timing for the 100 Hz frame rate.    
+    escc1.wait_for_tx(channelb);
+    
+    heartbeat();
+        
+    cout << "3\r" << flush;
+    
+    frame++;  // update the frame counter
+
+      // tell the DAQ system what frame this is
+    uio48.port_write(FRAME_LOW,frame); // LBC586 DIO ports connected to DAQ
+    uio48.port_write(FRAME_HIGH, frame >> 8);
+
+      // tell the DAQ system the number of the impending run
+    value = ~uio48.port_read(RUN_NUMBER); // read data on the port 
+    uio48.port_write(RUN_NUMBER, (value & 0x00e0) | (run_number & 0x001f)); // and insert the run number
+    
+    uio48.clr_bit(COMMAND0);  // send stop command to DAQ system "00"
+    uio48.clr_bit(COMMAND1);
+
+
+// ****************************TAKING ZEROS******************************
+// This loop executes whenever the TAKE_ZEROS command is asserted
+    if(taking_zeros)
+      {
+      
+      run_pinger();
+      
+      uio48.set_bit(COMMAND0);  // send taking_zeros command to DAQ system "01"
+      uio48.clr_bit(COMMAND1);
+        
+      //open a file to store this run's zeros
+      if((zerofile = fopen(z_name[run_number], "wb")) == NULL)
+        {
+        printf("\nCan't open Zeros file.  Exiting.\n");// exit on error
+        terminate_program();
+        }
+       
+      _strdate(datebuffer);  // get system date
+      _strtime(timebuffer);  // and time in ascii string format
+      
+        // build a file header to be written to the zeros file 
+        // write 1536 ff's to file header
+      for(i = 0; i < 1536; i++)
+        {
+        header[i] = '\xff';
+        }
+      
+      // write system date to header in ascii mo/da/yr
+      for(i=1536; i< 1544; i++)
+        {
+        header[i] = datebuffer[i-1536];
+        }
+      
+      // write 56 spaces to header
+      for(i = 1544; i < 1600; i++)
+        {
+        header[i] = ' ';
+        }
+
+      // write system time to header
+      for(i=1600; i<1608; i++)
+        {
+        header[i] = timebuffer[i-1600]; 
+        }
+
+      // 53 more spaces
+      for(i = 1608; i < 1661; i++)
+        {
+        header[i] = ' ';
+        }
+
+      // write file name to header
+      for(i = 1661; i< 1674; i++)
+        {
+        header[i] = z_name[run_number][i-1661];  
+        }
+      
+      // 374 more spaces
+      for(i = 1674; i < 2048; i++)
+        {
+        header[i] = ' ';
+        }
+      
+      // header is ready, write it to disk
+      fwrite(header, sizeof(header), 1, zerofile);
+        
+      // set up counter to take zeros for next 200 data frames
+      zeros_terminate = frame + 200;
+
+      while(frame < zeros_terminate)
+        {
+        perform_common_tasks();
+        
+        fwrite(data3, sizeof(data3), 1, zerofile);   // write pcm data to file
+                                                     // data3[] is left-adjusted version of data2[]
+        cout << "5\r" << flush;
+        
+        // wait for the pcm tx fifo to drain creating the 100Hz timing
+        escc1.wait_for_tx(channelb);
+        
+        heartbeat();        
+        
+        cout << "6\r" << flush;
+        
+        frame++;  // declare a new frame
+        
+          // tell the DAQ system what frame this is
+        uio48.port_write(FRAME_LOW,frame);
+        uio48.port_write(FRAME_HIGH, frame >> 8);
+
+          // tell the DAQ system the number of the impending run
+        value = ~uio48.port_read(RUN_NUMBER); // read data on the port 
+        uio48.port_write(RUN_NUMBER, (value & 0x00e0) | (run_number & 0x001f)); // and "or" in the run number
+    
+        } // end while(frame < zeros_terminate)
+        
+      // zeros are done, flag the system and close the zeros file  
+      taking_zeros = 0;
+      fclose(zerofile);
+      zeros_complete = 1;
+      data_complete = 0;
+
+      cout << "7\r" << flush;
+     
+      } // end if(taking_zeros)
+      
+      uio48.clr_bit(COMMAND0);  // command DAQ to stop "00"
+      uio48.clr_bit(COMMAND1);
+
+      
+//******************************TAKING DATA**********************************          
+// This loop runs repeatedly while the TAKE_DATA command is asserted
+    if(taking_data)  //
+      {
+      
+      run_pinger();
+      
+      uio48.clr_bit(COMMAND0);  // send taking_data command to DAQ system "10"
+      uio48.set_bit(COMMAND1);
+      
+        //open a data file       
+      if((datafile = fopen(d_name[run_number], "wb")) == NULL)
+        {
+        printf("\nCan't open Data file.  Exiting.\n");  // exit on error
+        terminate_program();
+        }
+      
+      cout << "8\r" << flush;
+      
+      _strdate(datebuffer);  // get system date
+      _strtime(timebuffer);  // and time in ascii string format
+
+        // build a header for the data file, same as for the zeros file
+      for(i = 0; i < 1536; i++)
+        {
+        header[i] = '\xff';
+        }
+
+      for(i=1536; i< 1544; i++)
+        {
+        header[i] = datebuffer[i-1536];
+        }
+      
+      for(i = 1544; i < 1600; i++)
+        {
+        header[i] = ' ';
+        }
+
+      for(i=1600; i<1608; i++)
+        {
+        header[i] = timebuffer[i-1600]; 
+        }
+      
+      for(i = 1608; i < 1661; i++)
+        {
+        header[i] = ' ';
+        }
+
+      for(i = 1661; i< 1674; i++)
+        {
+        header[i] = d_name[run_number][i-1661];  
+        }
+      
+      for(i = 1674; i < 2048; i++)
+        {
+        header[i] = ' ';
+        }
+      
+      // write the header to disk
+      fwrite(header, sizeof(header), 1, datafile);
+
+      run_terminate = frame + 60000;   // set up a counter to limit the
+                                       // data run to 60000 frames in case of a runaway
+      tracker_sync=0;              // declare pinger NOT sync'd to frame
+
+      while(taking_data)
+        {        
+        // sync pinger to frame
+        // pinger will output freq. B, sync'd with msb=0 and lsb =0
+        if(!tracker_sync && ((frame & 0x000f)==0x0000))
+         { 
+            reset_pinger();
+            tracker_sync=1;
+         }
+                                     
+        perform_common_tasks();
+        
+        fwrite(data3, sizeof(data3), 1, datafile);  // store run data to disk
+                                                    // data3[] is left-adjusted version of data2[]
+        cout << "9\r" << flush;
+        
+        if(tracker_sync == 1)
+          { 
+            run_pinger();
+          }
+          
+        cout << "A\r" << flush;
+
+        // wait for the pcm tx fifo to drain before starting new data frame;
+        // this provides the timing for the 100 Hz frame rate.
+        escc1.wait_for_tx(channelb);
+        
+        heartbeat();
+        
+        cout << "B\r" << flush;
+        
+        frame++;  // update the frame counter
+        
+          // tell the DAQ system what frame this is
+        uio48.port_write(FRAME_LOW,frame);
+        uio48.port_write(FRAME_HIGH, frame >> 8);
+
+          // tell the DAQ system the number of the impending run
+        value = ~uio48.port_read(RUN_NUMBER); // read data on the port 
+        uio48.port_write(RUN_NUMBER, (value & 0x00e0) | (run_number & 0x001f)); // and "or" in the run number
+    
+
+//        if(frame > run_terminate)    // used in final code to stop recording
+//          {                          // data if rcm "runs away" for 10 minutes
+//          cout << "Data run exceeds 10 minutes." << endl;
+//          terminate_program();     
+//          }
+                                 
+              
+        } // end of while(taking_data)
+        
+        
+        // taking data is done, flag the system and close the data file
+        taking_data = 0;
+        fclose(datafile);
+        data_complete = 1;
+        zeros_complete = 0;
+        run_number++;   // declare end of current run, indicate # of next run
+        
+        cout << "C\r" << flush;
+      
+      } // end if(taking_data)      
+      
+      uio48.clr_bit(COMMAND0);  // command DAQ to stop "00"
+      uio48.clr_bit(COMMAND1);
+      
+    }//*************************END OF IDLE LOOP**************************
+  
+  // arrive here when operator hits a key to terminate the program
+  c = _getch();         // flush keyboard buffer
+  terminate_program();  // time to quit
+  
+  }//**************************END OF MAIN***********************************
+
+
+  
+
+void update_planes(void)
+  {
+    // rudder is on discriminator ch7, sc2 ch6,
+    // dmm32 adc ch22, dmm32 dac ch1, data[38]  
+  const float     rudder_tau = 0.1;          // filter time constant
+  const float     rudder_time_step = 0.01;   // filter time step 
+  long int        rudder_command;
+  long int        rudder_command_filtered;
+  static long int rudder_command_filtered_old;
+  static long int rudder_command_old;
+    int             rudder_dac;   
+    
+    // get rudder command from discriminator
+  rudder_command  = long int(data[38]);
+    
+  // rate limit command to eliminate telemetry drop outs. 
+  // 100 deg/s at actuator= .050 v/time step, .05v/10v*2^16
+  if (abs(rudder_command - rudder_command_old) > 328)
+     {
+     rudder_command=rudder_command_old + sign(rudder_command - rudder_command_old)*328;
+     } 
+
+
+    // filter the discriminator command
+  rudder_command_filtered = long int((rudder_time_step * (rudder_command + rudder_command_old) / (2*rudder_tau + rudder_time_step))
+      - rudder_command_filtered_old * ((rudder_time_step - 2*rudder_tau) / (2*rudder_tau + rudder_time_step)));
+    
+    // save current rudder data for next frame     
+  rudder_command_filtered_old = rudder_command_filtered;
+  rudder_command_old = rudder_command;
+  
+  // convert rudder command to 12-bit offset binary for dmm32 dac output
+  rudder_dac = (int(rudder_command_filtered) / 16) + 2048 - 4;
+
+  // limit command to dac output range
+  if(rudder_dac > 4095) rudder_dac = 4095;
+  if(rudder_dac < 0)    rudder_dac = 0;
+ // cout << rudder_dac << '\t' << (rudder_dac / 32767 * 10.0) << "  " << flush;
+ //cout << "HEX:" << hex << data[13] << "     " << flush;
+ //cout << "BAL:" << hex << data[41] << "     " << flush; // ballast command
+ cout << "PROP:" << data[64] << "     " << flush; // prop position
+  //cout << "PITCH:" << (((float)data[9])*0.00549) << "         " << flush;
+  //cout << "FAILURE:" << hex << data[14] << dec   << "         " << flush;
+  //cout << "\r" << "PITCH:"   << (((float)data[9])*0.00549) <<
+  //                " FAILURE:" << hex << data[14] <<   dec   <<
+  //                " MODE:"    << hex << data[13] <<   dec   <<
+  //                " HEADING: " << (((float)data[11])*0.00549) <<
+  //                "         " << flush;
+  
+
+    // stern is on discriminator ch6, sc2 ch5, 
+    // dmm32 adc ch21, dmm32 dac ch0, data[37]
+  const float     stern_tau = 0.1;           // filter time constant
+  const float     stern_time_step = 0.01;    // filter time step 
+  long int        stern_command;
+  long int        stern_command_filtered;
+  static long int stern_command_filtered_old;
+  static long int stern_command_old;
+  int             stern_dac;  
+
+  // rate limit command to eliminate telemetry drop outs. 
+  // 100 deg/s at actuator= .050 v/time step, .05v/10v*2^16
+  if (abs(stern_command - stern_command_old) > 328)
+     {
+     stern_command=stern_command_old + sign(stern_command - stern_command_old)*328;
+     } 
+
+    // get stern command from discriminator
+  stern_command  = long int(data[37]);
+    
+    // filter the discriminator command
+    stern_command_filtered = long int((stern_time_step * (stern_command + stern_command_old) / (2*stern_tau + stern_time_step))
+      - stern_command_filtered_old * ((stern_time_step - 2*stern_tau) / (2*stern_tau + stern_time_step)));
+    
+    // save current stern data for next frame     
+    stern_command_filtered_old = stern_command_filtered;
+    stern_command_old = stern_command;
+  
+  // bypass sternplane filter 
+  //stern_command_filtered = stern_command;
+  
+  // convert command to 12-bit offset binary for dmm32 dac output
+  stern_dac = (int(stern_command_filtered) / 16) + 2048 - 4;
+
+  // limit command to dac output range
+  if(stern_dac > 4095) stern_dac = 4095;
+  if(stern_dac < 0)    stern_dac = 0;
+    
+
+
+    // sterntip (spare1) is on discriminator ch12, sc2 ch11,
+    // dmm32 adc ch27, dmm32 dac ch3, data[43]
+    const float     sterntip_tau = 0.1;           // filter time constant
+    const float     sterntip_time_step = 0.01;    // filter time step 
+  long int        sterntip_command;
+  long int        sterntip_command_filtered;
+  static long int sterntip_command_filtered_old;
+  static long int sterntip_command_old;
+    int             sterntip_dac;   
+
+    // get sterntip command from discriminator
+  sterntip_command  = long int(data[43]);
+
+  // rate limit command to eliminate telemetry drop outs. 
+  // 100 deg/s at actuator= .050 v/time step, .05v/10v*2^16
+  if (abs(sterntip_command - sterntip_command_old) > 328)
+     {
+     sterntip_command=sterntip_command_old + sign(sterntip_command - sterntip_command_old)*328;
+     } 
+         
+    // filter the discriminator command
+    sterntip_command_filtered = long int((sterntip_time_step * (sterntip_command + sterntip_command_old) / (2*sterntip_tau + sterntip_time_step))
+      - sterntip_command_filtered_old * ((sterntip_time_step - 2*sterntip_tau) / (2*sterntip_tau + sterntip_time_step)));
+    
+    // save current sterntip data for next frame     
+    sterntip_command_filtered_old = sterntip_command_filtered;
+    sterntip_command_old = sterntip_command;
+  
+  // convert sterntip command to 12-bit offset binary for dmm32 dac output
+  sterntip_dac = (int(sterntip_command_filtered) / 16) + 2048 - 4;
+
+  // limit command to dac output range
+  if(sterntip_dac > 4095) sterntip_dac = 4095;
+  if(sterntip_dac < 0)    sterntip_dac = 0;
+
+
+    // fore planes on discriminator ch8, sc2 ch7,
+    // dmm32 adc ch23, dmm32 dac ch2, data[39]
+    const float     fore_tau = 0.1;             // filter time constant
+    const float     fore_time_step = 0.01;      // filter time step 
+  long int        fore_command;
+  long int        fore_command_filtered;
+  static long int fore_command_filtered_old;
+  static long int fore_command_old;
+    int             fore_dac;   
+
+    // get fore command from discriminator
+  fore_command  = long int(data[39]);
+
+  // rate limit command to eliminate telemetry drop outs. 
+  // 100 deg/s at actuator= .050 v/time step, .05v/10v*2^16
+  if (abs(fore_command - fore_command_old) > 328)
+     {
+     fore_command=fore_command_old + sign(fore_command - fore_command_old)*328;
+     } 
+
+    
+    // filter the discriminator command
+    fore_command_filtered = long int((fore_time_step * (fore_command + fore_command_old) / (2*fore_tau + fore_time_step))
+      - fore_command_filtered_old * ((fore_time_step - 2*fore_tau) / (2*fore_tau + fore_time_step)));
+    
+    // save current fore data for next frame     
+    fore_command_filtered_old = fore_command_filtered;
+    fore_command_old = fore_command;
+  
+  // convert fore command to 12-bit offset binary for dmm32 dac output
+  fore_dac = (int(fore_command_filtered) / 16) + 2048 - 4;
+
+  // limit command to dac output range
+  if(fore_dac > 4095) fore_dac = 4095;
+  if(fore_dac < 0)    fore_dac = 0;
+    
+    
+    // send all plane commands to dmm32 dac for update
+  dmm32.da_out(stern_dac,0);      // stern    on dmm32 dac ch0
+  dmm32.da_out(rudder_dac,1);     // rudder   on dmm32 dac ch1 
+  dmm32.da_out(fore_dac,2);       // fore     on dmm32 dac ch2
+  dmm32.da_out(sterntip_dac,3);   // sterntip on dmm32 dac ch3 
+//  dmm32.da_out(rudder_dac,2);//TEST       // fore     on dmm32 dac ch2
+//  dmm32.da_out(rudder_dac,3);//TEST   // sterntip on dmm32 dac ch3
+
+
+
+  } // end update_planes()
+
+
+
+  
+int sign(float number)  // returns the sign (+-) of a floating point number
+  {
+  if(number < 0)
+    {
+    return -1;
+    }
+  else
+    {
+    return 1;
+    }
+  }  
+
+
+
+void terminate_program(void)  // shutdown system at user request
+  {
+  if(c == 't')
+    {
+    uio48.set_bit(COMMAND0);  // command DAQ system to stop "11"
+    uio48.set_bit(COMMAND1);
+    }
+    
+  escc1.kill_port(channela);  //shut down the ESCC board 
+  escc1.kill_port(channelb);
+  cout << endl << "Shut down ESCC/LN200." << endl;
+  
+    // send final sync pulse to the DAQ system to latch in the stop command
+  uio48.set_bit(SYNC);
+  uio48.clr_bit(SYNC);
+  cout << "Shut down DYNO." << endl;  
+  
+  _fcloseall();               // general file cleanup
+  
+  te5650DisableIRQ();         // release Tech-80 resources
+  cout << "Shut down TECH80." << endl;
+  
+  //printf("\n\n");
+  cout << "Done." << endl << endl;
+  
+  exit(0);
+  
+  }  
+
+
+
+void sleep(clock_t wait)   //timing loop based on system clock ticks
+  {                        //minimum resolution = 55 msec, or one pc clock tick
+  clock_t goal;            //works poorly
+  goal = wait + clock();
+  while(goal > clock());
+  }
+    
+
+
+void prep_data(void)
+  {
+  // Prepare pcm data to be sent up the telemetry link in biphase-m (76.8 KHz)
+  // The telemetry frame is 64 words x 12 bits.
+  //
+  // All ln200 and a/d data was first collected and stored in array data[]
+  // as 48 16-bit words.  For pcm transmission, the data must be:
+  // 1) scaled, converted to offset-binary and placed in proper channel slots
+  // 2) shifted down from 16-bit to 12-bit (shift and mask) (keep high byte 0000 hex
+  // 3) converted from from lsb first to msb first (with lookup[] table) for the bit synchronizer
+  // 4) 1's complemented (~) (also for the bit synchronizer)
+  // 5) repacked for the escc from 64 12-bit words to 96 8-bit bytes (shift and mask) (for the escc) 
+  
+  const int d_offset = 0x0800;
+  
+  // data[], data2[], and data3[] are all global integer arrays
+  
+  // so, first scale the numbers, add the offset, place in slots
+  data2[0] = 0x0faf;         // decom sync 1
+  data2[1] = 0x0321;         // decom sync 2
+  data2[2] = 7 << 1;         // CB ID, 7 << 1, jtm 8/13/2003
+
+  data2[4] = ((long)data[64] * 2)    + d_offset;        // 5 msb of prop position
+  data2[3]  = (data2[4] >> 12) * 2 + d_offset;    // 12 lsb of prop position
+  
+  // in failsafe; fm failsafe is sc2 ch10, mm32 adc ch26
+  data2[5] = (data[13] >> 4) & 0x0ff0; // ln200 status word high byte
+  data2[6] = (data[13] << 4) & 0x0ff0; // ln200 status low
+  // add failsafe flags to ln200 status 5/29/01 jtm
+  data2[6] = data2[6] | (in_fm_failsafe << 1) | (in_hw_failsafe << 2); 
+    
+  data2[7] = (frame >> 4) & 0x0ffe; // most significant 11 bits of 16 bit frame counter
+  data2[8] = (frame << 7) & 0x0f80; // least sig 5 bits of 16 bit frame counter, LEFT ADJUSTED
+    
+  data2[10] = ((long)data[5] * 2)    + d_offset;       // z axis angular rate low
+  data2[9]  = (data2[10] >> 12) * 2 + d_offset;  // high
+  
+  data2[12] = ((long)data[3] * 2)    + d_offset;       // y axis angular rate low
+  data2[11] = (data2[12] >> 12) * 2 + d_offset;  // high
+    
+  data2[14] = ((long)data[4] * 2)    + d_offset;       // x axis angular rate low
+  data2[13] = (data2[14] >> 12) * 2 + d_offset;  // high
+    
+  data2[16] = ((long)data[2] * 2)    + d_offset;       // x axis linear accel low
+  data2[15] = (data2[16] >> 12) * 2 + d_offset;  // high
+      
+  data2[18] = ((long)data[1] * 2)    + d_offset;       // y axis linear accel low
+  data2[17] = (data2[18] >> 12) * 2 + d_offset;  // high
+
+    // compensate LN200 Z accel reading for standard gravity: (32.17405 / 2^-6 counts )
+  data2[20] = (((long)data[0] + (32.17405 * 64)) * 2)    + d_offset;       // z axis linear accel
+  data2[19] = (data2[20] >> 12) * 2 + d_offset;
+  
+//  int value = data[32];
+  data2[22] = ((long)data[32] * 2) + d_offset;          //  bow depth ? low 11
+  data2[21] = (data2[22] >> 12) * 2 + d_offset;  // high  
+  
+  
+  data2[24] = ((long)data[33] * 2)    + d_offset;       // stern depth 2 low
+  data2[23] = (data2[24] >> 12) * 2 + d_offset;   // high
+ 
+  data2[26] = ((long)data[47] * 2)    + d_offset;       // bow depth ? low
+  data2[25] = (data2[26] >> 12) * 2 + d_offset;   // high
+ 
+     
+  const int s_offset = 0x0800;
+    
+ //  ln200 single channel scale factors
+ //  convert 16-bit LN200 native data to 12-bit pcm data
+ //  to provide desired full-scale range for each channel
+ //  scale factor = ln200 lsb value * 2^12 counts / desired full-scale range EUs
+ 
+    // roll_accel (Pdot), ln200 lsb = 2^-4 deg/sec^2
+  // new 2/21/2002  
+  data2[27] = data[7];
+    // limit roll_accel to 12-bits and max +- 128 deg/sec^2 range
+  if(data2[27] >  2047) data2[27] =  2047;
+  if(data2[27] < -2048) data2[27] = -2048;
+  data2[27] = data2[27] + s_offset;
+  
+    // pitch_accel (Qdot), lsb = 2^-6 deg/sec^2/count, range = +-70 deg/sec^2    
+//  data2[28] = int(data[6]  * 0.457142857) + s_offset; // pitch_FAST_ACCEL
+  // new 2/21/2002
+  data2[28] = data[6];
+  // limit pitch_accel to 12-bits and max +- 128 deg/sec^2 range  
+  if(data2[28] >  8191) data2[28] =  8191;
+  if(data2[28] < -8192) data2[28] = -8192;
+  data2[28] = (data2[28] >> 2) + s_offset;
+
+    // yaw_accel (Rdot), lsb = 2^-7 deg/sec^2/count, range = +-70 deg/sec^2    
+  //data2[29] = int(data[8]  * 0.228571429) + s_offset; // yaw_FAST_ACCEL
+  // new 2/21/2002
+  data2[29] = data[8];
+  // limit yaw_accel to 12-bits and max +- 128 deg/sec^2 range  
+  if(data2[29] >  16383) data2[29] =  16383;
+  if(data2[29] < -16384) data2[29] = -16384;
+  data2[29] = (data2[29] >> 3) + s_offset;
+  
+  
+    // scale 16-bit data to 12-bit by dividing by 2^4
+  data2[30] = (data[36] >> 4)      + s_offset; // prop_cmd
+  data2[31] = (data[39] >> 4)      + s_offset; // fwd_cmd
+  data2[32] = (data[37] >> 4)      + s_offset; // strn_cmd
+  data2[33] = (data[38] >> 4)      + s_offset; // rudd_cmd
+  data2[34] = (data[42] >> 4)      + s_offset; // failsafe
+  data2[35] = (data[40] >> 4)      + s_offset; // cage/mode
+  data2[36] = (data[16] >> 4)      + s_offset; // e_bat
+  
+    // yaw, ln200 lsb = (2^-15) * 180 deg/count, range = +-180 deg    
+  //data2[37] = int(data[11] * 0.0625)      + s_offset; // yaw180
+  data2[37] = (data[11] >> 4)      + s_offset; // yaw180
+
+    // yaw_exp, lsb = (2^-15) * 180 deg/count, range = +-45 deg      
+    // deleted 2/21/2002 jtm
+  //data2[38] = int(data[11] * 0.0625)        + s_offset; // yaw_exp 8/03/01
+  data2[38] = 0;
+  
+    // pitch_exp, ln200 lsb = (2^-15) * 180 deg/count, range = +-22.5 deg      
+    // deleted 2/21/2002 jtm    
+  //data2[39] = int(data[9]  * 0.25)         + s_offset; // pitch_exp  8/03/01
+  data2[39] = 0;
+  
+    // roll, ln200 lsb = (2^-15) * 180 deg/count, range = +-180 deg      
+  data2[40] = (data[10] >> 3) + s_offset; // roll
+
+    // roll_rate_exp, lsb = 2^-6 deg/sec/count, range = +-14 deg/sec  
+    // deleted 2/21/2002 jtm    
+  //data2[41] = int(data[4]  * 2.285714286) + s_offset;
+  data2[41] = 0;
+  
+    // pitch_rate_exp, lsb = 2^-8 deg/sec/count, range = +-14 deg/sec    
+    // deleted 2/21/2002 jtm    
+  //data2[42] = int(data[3]  * 0.571428571) + s_offset; // pitch_rate_exp
+  data2[42] = 0;
+  
+    // yaw_rate_exp, lsb = 2^-9 deg/sec/count, range = +-14 deg/sec  
+    // deleted 2/21/2002 jtm
+  //data2[43] = int(data[5]  * 0.285714286) + s_offset; // yaw_rate_exp
+  data2[43] = 0;
+  
+    // x_accel_exp, lsb = (2^-6) ft/sec^2/count, range = +-17 ft/sec^2      
+    // deleted 2/21/2002 jtm    
+  //data2[44] = int(data[2]  * 1.882352941) + s_offset; // x_accel_exp
+  data2[44] = 0;
+    
+    // y_accel_exp, lsb = (2^-6) ft/sec^2/count, range = +-17 ft/sec^2        
+    // deleted 2/21/2002 jtm    
+  //data2[45] = int(data[1]  * 1.882352941) + s_offset; // y_accel_exp
+  data2[45] = 0;
+  
+    // z_accel_exp, lsb = (2^-6) ft/sec^2/count, range = +-17 ft/sec^2
+    // NOTE:  LN200 reading is compensated for standard gravity: (32.17405 / 2^-6 counts)
+    // deleted 2/21/2002 jtm    
+  //data2[46] = int((data[0] + (32.17405 * 64)) * 1.882352941) + s_offset; // z_accel_exp
+  data2[46] = 0;
+  
+    // Pdot_exp, lsb = 2^-4 deg/sec^2, range = +-17 deg/sec^2
+    // deleted 2/21/2002 jtm    
+  //data2[47] = int(data[7]  * 7.529411765) + s_offset; // Pdot_exp
+  data2[47] = 0;
+
+  status_word = 0;
+  data2[48] = status_word | !in_hw_failsafe << 11
+                          | (!(taking_data | taking_zeros) <<8)
+                          | 0x680
+                          | taking_data << 3
+                          | taking_zeros << 2
+                          | mode << 1
+                          | direction;
+                          
+
+    // Qdot_exp, lsb = (2^-6) ft/sec^2/count, range = +-17 ft/sec^2                                
+    // deleted 2/21/2002 jtm    
+  //data2[49] = int(data[6] * 1.882352941) + s_offset; // Qdot_exp
+  data2[49] = 0;
+  
+    // Rdot_exp, lsb = (2^-7) ft/sec^2/count, range = +-17 ft/sec^2        
+    // deleted 2/21/2002 jtm    
+  //data2[50] = int(data[8] * 0.941176471) + s_offset; // Rdot_exp
+  data2[50] = 0;
+    
+    // depth3, bow sensor, data[47], obc ch 31, sc2 ch15, mm32 adc ch17
+    // deleted 2/21/2002 jtm    
+  //data2[51] = (data[47] * 0.074482759) + s_offset; // added 5/21/01 JTM
+  data2[51] = 0;
+  
+    //fore plane lvdt, sc1 ch12, mm32 adc ch12
+  data2[52] = data[28];  
+  if(data2[52] >  32767) data2[52]=  32767;    
+  if(data2[52] < -32767) data2[52]= -32767;    
+  //data2[52] = ((data[28]>>4) & 0x0fff) + s_offset;
+  data2[52] = (data2[52] >> 4) + s_offset;
+
+    //rudder lvdt, sc1 ch13, mm32 adc ch13
+//  data2[53] = int(float(-data[29])/32767.0 * 45.0 * 45.5) + s_offset;
+  data2[53] = data[29];
+  if(data2[53] >  32767) data2[53] =  32767;
+  if(data2[53] < -32767) data2[53] = -32767;  // prevent rollover
+  data2[53] = (-data2[53] >> 4) + s_offset;
+//  _settextposition(23,60);
+//  cout<<hex<<data[29]<<flush;
+//  _settextposition(24,60);
+//  cout<<hex<<data2[53]<<flush;
+
+    //stern lvdt, sc1 ch14, mm32 adc ch14
+  data2[54] = data[30];  
+  if(data2[54] >  32767) data2[54] =  32767;
+  if(data2[54] < -32767) data2[54] = -32767;
+  data2[54] = (data2[54] >> 4) + s_offset;
+
+    // stern tips lvdt (spare1), sc1 ch15, mm32 adc ch15
+  data2[55] = data[31];  
+  if(data2[55] >  32767) data2[55] =  32767;
+  if(data2[55] < -32767) data2[55] = -32767;    
+  data2[55] = (data2[55] >> 4) + s_offset;
+
+   // prop_voltage, sc1 ch3, mm32 adc ch3; mc output is +- 5V, 40V/V; module is +-10V
+   // NOTE:  data is shifted by 3 instead of 4 because 5B module has
+   // +/-10 volt input instead of +/- 5 volt input.  ??????????
+  data2[56] = (data[19] >> 4) + s_offset;
+  
+   // prop_current, sc1 ch2, mm32 adc ch2; mc output is +- 5V, 20V/V; module is +-10V
+   // NOTE:  data is shifted by 3 instead of 4 because 5B module has
+   // +/-10 volt input instead of +/- 5 volt input.  
+  data2[57] = (data[18] >> 4) + s_offset;
+
+    // pitch, lsb = (2^-15) * 180 deg/count, range = +-90 deg        
+  data2[58] = (data[9] >> 2) + s_offset; // pitch
+
+    // paddle_wheel, module is 500Hz 0-5Volt
+  if(data[34] < 0) data[34] = 0;  
+  data2[59] = 2047 - ((data[34] >> 4) );
+
+    // rpm, 2540 pulse/rev, module is 100KHz 0-5Volt
+  if(data[35] < 0) data[35] = 0;  
+  data2[60] = 2047 - ((data[35] >> 4) );
+  
+    // depth1, stern port 
+    // deleted 2/21/2002 jtm  
+  //data2[61] = int(data[32] * 0.074482759) + s_offset; 
+  data2[61] = 0;
+  
+    // depth2, stern starboard
+    // deleted 2/21/2002 jtm  
+  //data2[62] = int(data[33] * 0.074482759) + s_offset;
+  data2[62] = 0;
+    
+    // roll_rate, lsb = 2^-6, range = +-55 deg/sec
+    // deleted 2/21/2002 jtm    
+  //data2[63] = int(data[4]  * 0.581818182) + s_offset; // roll_rate
+  data2[63] = 0;
+  
+    // deleted 2/21/2002 jtm; see data3[64]
+  //data2[64] = data[64];  // prop position 
+  data2[64] = 0;
+  
+    // now left adjust the data that will be written to onboard data file
+  for(int i = 0; i < 64; i++)
+    {
+    data3[i] = data2[i] << 4;
+    }
+    
+  data3[64] = data[64];  // jtm 03/15/00 add 16-bit prop position   
+  data3[69] = frame;  // jtm 03/02/00 16-bit frame counter added for daq sync
+  data3[70] = axis6_index; // % 10160;   // jtm 05/18/00 store prop index position; 
+  data3[71] = axis6_index; // % 10160;   // jtm 05/18/00 store prop index position;
+  
+  //The scaled and offset data is now stored in array pcm[] in 8 bit bytes.
+  //The following for-loop converts 2 16-bit data2[] words into 3 8-bit pcm[] bytes
+  //(shift and mask), reverses the word msb for lsb (lookup[]),
+  // 2/27/02 Note: inversion no longer needed:
+  // and inverts each bit(~).
+
+//  for(int j=0;j<1;j++)
+//    {
+//    pcm[3*j]   =  ~lookup[(data2[2*j] >> 4) & 0x00ff];
+//    pcm[3*j+1] =  ~lookup[((data2[2*j]<<4) & 0x00f0) | ((data2[2*j+1]>>8)&0x000f)];
+//    pcm[3*j+2] =  ~lookup[data2[2*j+1] & 0x00ff];
+//    }
+    
+  for(int jj=0; jj<32; jj++)
+    {
+    pcm[3*jj] = 0;
+    pcm[3*jj+1] = 0;
+    pcm[3*jj+2] = 0;  
+    
+    int variable1 = (data2[2*jj] >> 4) & 0x00ff;
+    int variable2 = ((data2[2*jj]<<4) & 0x00f0) | ((data2[2*jj+1]>>8)&0x000f);
+    int variable3 = data2[2*jj+1] & 0x00ff;
+
+                       
+    for(i=0; i<8; i++)
+      {
+      if(variable1 & 1<<i) pcm[3*jj] = pcm[3*jj] | 0x0080>>i; 
+      if(variable2 & 1<<i) pcm[3*jj+1] = pcm[3*jj+1] | 0x0080>>i;
+      if(variable3 & 1<<i) pcm[3*jj+2] = pcm[3*jj+2] | 0x0080>>i;
+      }
+     
+    // 2/27/02 bitwise inversion no longer needed after sorting out FM0 vs. FM1 
+    //pcm[3*jj] =   ~pcm[3*jj];
+    //pcm[3*jj+1] = ~pcm[3*jj+1];
+    //pcm[3*jj+2] = ~pcm[3*jj+2];
+    
+    }  
+
+   
+//  for(j=1;j<32;j++)
+//    {
+//    pcm[3*j]   = 0x0d;
+//    pcm[3*j+1] = 0xffde;
+//    pcm[3*j+2] = 0xffe0;
+//    }
+
+
+/*  for(int j=0;j<32;j++)
+    {
+    pcm[3*j]   = ~lookup[char (data2[2*j] >> 4)];
+    pcm[3*j+1] = ~lookup[char (((data2[2*j]<<4) & 0x00f0) | ((data2[2*j+1]>>8)&0x000f))];
+    pcm[3*j+2] = ~lookup[char (data2[2*j+1])];
+    }
+*/
+  }  // end prep_data()
+  
+  
+  
+void reset_ln200(void)      // LN200 Power On Reset
+  // note negative logic level on the LBC586 DIO ports
+  // 0 volts = logic high
+  {
+  cout << "Resetting LN200." << endl; 
+  uio48.set_bit(POR);  // pull POR low
+  sleep(2000);         // wait 2 seconds
+  uio48.clr_bit(POR);  // return POR high
+  sleep(1000);         // wait 1 second
+  cout << "LN200 reset." << endl << endl;
+  }  //  end reset_ln200()
+  
+  
+  
+void zero_buffers(void)  // clear garbage, just in case
+  {
+  int i;    
+  for(i=0;i<64;i++) rbuffer[i] = tbuffer1[i] = 0;
+  for(i=0;i<65;i++) data[i]  = 0;
+  for(i=0;i<144;i++) data2[i] = 0;
+  for(i=0;i<96;i++) pcm[i]   = 0;
+  for(i=0;i<80;i++)
+   {
+   data_name[i] = '0';
+   zero_name[i] = '0';
+   }
+  }  // end zero_buffers()  
+  
+  
+
+void heartbeat(void) // pulse the heartbeat signal to the failsafe system
+  {
+  uio48.set_bit(HEARTBEAT);
+  uio48.clr_bit(HEARTBEAT);
+  }   // end heartbeat()
+  
+  
+  
+void prep_ln200_command(int heading_valid)  // build LN200 query frame
+  {
+  int i, j;
+  
+//  if(mode == 1 && !data_complete && zeros_complete) // fast levelling in idle loop
+//    {
+//    head[0] = data_name[8];
+//    }
+  
+  if((direction = ( run_number % 2))==0)     // if impending run # is even
+    {                                        // use the 0th bearing from disk
+    heading = (int) (atof(bearing0) * 182.044);
+    }
+  else                                       // if impending run # is odd
+    {                                        // use the 1st bearing from disk
+    heading = (int) (atof(bearing1) * 182.044);
+    }
+  
+  latitude = (int) (LATITUDE * 182.044); // LN200 operating latitude,+-degrees, see ln200 ICD
+  x_axis = (int) (X_AXIS * 182.044);     // LN200 boresight rotations,+-degrees
+  y_axis = (int) (Y_AXIS * 182.044);
+  z_axis = (int) (Z_AXIS * 182.044);
+  
+  
+  //mode = 0;      //LN200 modes are 0 (free inertial) and 1 (fast leveling)
+  //mode = 1;
+    
+  latitude_valid  = YES;               // latitude valid?
+  //heading_valid = YES;               // heading valid?
+  boresights_valid = YES;              // boresight rotations valid?
+  bit = NO;                            // run Built In Test?
+  //bit = YES;                            // run Built In Test?
+
+  icmd[0]=0x0000;                      // assemble the command word icmd[]
+  icmd[0]=icmd[0]|mode;
+  icmd[0]=icmd[0]|(boresights_valid<<3);
+  icmd[0]=icmd[0]|(bit<<4);
+  icmd[0]=icmd[0]|(latitude_valid<<8);
+  icmd[0]=icmd[0]|(heading_valid<<9);
+  icmd[1]=latitude;
+  icmd[2]=heading;
+  icmd[3]=x_axis;
+  icmd[4]=y_axis;
+  icmd[5]=z_axis;
+  icmd[6]=0x0;                      // calculate icmd[] checksum
+  for (i=0;i<6;i++)                 // sum icmd[0] to icmd[5]
+    icmd[6]=icmd[6]+icmd[i];
+  icmd[6]=~icmd[6];                 // then take bit-wise 1's complement
+    
+  //convert the word-oriented icmd[] into the byte-oriented tbuffer1[]
+  for(j=0;j<7;j++)
+    {
+    tbuffer1[2*j] = icmd[j]&0x00ff;          //mask off high byte and load low byte first
+    tbuffer1[(2*j)+1] = (icmd[j]>>8)&0x00ff; //then shift high byte down, mask any sign bits,
+    }                                        //and load high byte
+  
+  } // end prep_ln200_command()
+  
+  
+  
+void get_fm_commands(void)  // process fm commands from the a/d converter
+  {
+  float rudder_adc     = 0.0;
+  float stern_adc      = 0.0;
+  float fairwater_adc  = 0.0;
+  float ballast_adc    = 0.0;
+  float mode_adc       = 0.0;
+  float failsafe_adc   = 0.0;
+  float spare_adc      = 0.0;
+  const float full_scale_counts = 65535.0; // dmm32 full scale counts = 2^16 - 1
+  const float input_range       = 10.0;    // dmm32 input range = +- 5.0 volts
+  const float scale_factor      = 20.0;    // 20.0 degrees/volt
+  const float tau               = 0.1;     // filter time constant
+  const float time_step = 0.01;            // filter time step 
+  const float limit = 10160 / 360 * 0.5;   // maximum delta for plane command in one data frame
+                                           // for 0.5 degree
+
+//  float rudder_set[20];
+//  char cc;//used for rudder calibration
+//  rudder_set[1]=0.0;
+//  rudder_set[2]=10.0;
+//  rudder_set[3]=20.0;
+//  rudder_set[4]=30.0;
+//  rudder_set[5]=40.0;
+//  rudder_set[6]=30.0;
+//  rudder_set[7]=20.0;
+//  rudder_set[8]=10.0;
+//  rudder_set[9]=0.0 ;
+//  rudder_set[10]=-10.0;
+//  rudder_set[11]=-20.0;
+//  rudder_set[12]=-30.0;
+//  rudder_set[13]=-40.0;
+//  rudder_set[14]=-30.0;
+//  rudder_set[15]=-20.0;
+//  rudder_set[16]=-10.0;
+//  rudder_set[17]=0.0;
+//  rudder_set[18]=0.0;
+//  rudder_set[19]=0.0;
+//  rudder_set[20]=0.0;
+  
+  
+  // failsafe is on fm ch7, aim2 ch11, data[42]
+  failsafe_adc = data[42] / full_scale_counts * input_range;
+  //if(failsafe_adc >= (3.34) && failsafe_adc <= (3.74))  // 3.540+-200mV grey console
+  if((failsafe_adc >= (3.00)) && (failsafe_adc <= (3.80)))  // 3.40+-400mV blue console 11/14/01
+    {     // fm failsafe signal is within range           // 2.960+-200mV desired
+    in_fm_failsafe = 0;
+    }
+  else    // fm failsafe signal is out of range
+    {
+    in_fm_failsafe = 1;
+    }
+  in_hw_failsafe = uio48.read_bit(IN_HW_FAILSAFE);  // check if hardware failsafe is asserted
+
+//******************** new: signal digital filter **********************
+
+//  9/3/01  New code to provide digital filtering of the FS and PROP
+//    commands from the discriminators.
+  
+  static int fs_adc;
+  float  fs_in = 0;
+  float  fs_out = 0;
+  static float  fs_out_old;
+  static float  fs_in_old;
+  static float  fs_command;
+
+  fs_adc = data[42];
+   
+  // rate limit to 32 counts per frame 
+  if(abs(fs_adc - fs_in_old) > 32)      //65
+    {
+    fs_adc=fs_in_old + sign(fs_adc - fs_in_old)*32;      //65
+    }   
+   
+  // filter 
+  fs_in = fs_adc;
+  fs_out = (time_step*(fs_in + fs_in_old) / (2*tau+time_step))  - fs_out_old *((time_step - 2*tau)/(2*tau + time_step));
+  fs_out_old = fs_out;
+  fs_in_old = fs_in;
+  fs_command = fs_out/2.0;
+
+  // limit how low the FS signal can go (for faster recovery during intermittent dropouts)
+  if(fs_command < 3277.0) fs_command = 3277.0;
+  
+/*  if(in_fm_failsafe)
+    {
+  fs_command = fs_out / 2.0;    
+    }
+  else  
+    {
+    fs_command = 3.4 / 2.0;
+    }
+*/
+  
+  // apply command to failsafe stack using the dac on the Tech80 board 
+  te5650SetAxis(BOARD1, AXIS3);
+  te5650Update();
+  _settextposition(24,60);
+//  cout<<fs_command<<'\t'<<(fs_command / 32767 * 10.0)<<flush;
+  te5650SetMotor(int(fs_command));
+  te5650Update();
+  
+
+
+//******************** new PROP signal digital filter **********************
+
+  int prop_adc = 0;
+  float  prop_in = 0;    // used to filter fm mode commands
+  float  prop_out = 0;
+  static float  prop_out_old = 0;
+  static float  prop_in_old = 0;
+  float  prop_command = 0;
+
+  prop_adc = -data[36];
+  //prop_adc = data[36];  // changed 2/18/2005, motor controller changed
+  
+  // rate limit
+  if(abs(prop_adc - prop_in_old) > 328)
+    {
+    prop_adc=prop_in_old + sign(prop_adc - prop_in_old)*328;
+    } 
+
+  // digital filter
+  prop_in = prop_adc;
+  prop_out = (time_step*(prop_in + prop_in_old) / (2*tau+time_step))  - prop_out_old *((time_step - 2*tau)/(2*tau + time_step));
+  prop_out_old = prop_out;
+  prop_in_old = prop_in;
+  
+  // send command to MC through dac on Tech80 board
+  // only if you believe the command is valid
+  // 
+  // else keep previous command
+  if(!in_fm_failsafe)
+    {
+    //prop_command = prop_out/2.0;
+    prop_command = prop_out; // use with digital filter
+    
+    //prop_command = prop_adc;   // use with no digital filter
+    te5650SetAxis(BOARD1, AXIS4);
+    te5650Update();
+    te5650SetMotor(int(prop_command));
+    te5650Update();
+    }
+  
+  
+  update_planes();
+
+  // ballast is on fm ch6, aim2 ch10, data[41]
+  ballast_adc = data[41] / full_scale_counts * input_range;
+  
+  //flood
+  if(ballast_adc >= 3.475 && !in_fm_failsafe)                           
+    {
+    uio48.port_write(BALLAST, pump + valve2 + valve3 + valve6);
+    }
+  
+  //trim_aft
+  if(ballast_adc >= 0.976 && ballast_adc < 3.475 && !in_fm_failsafe)     
+    {
+    uio48.port_write(BALLAST, pump + valve3 + valve4);
+    }
+    
+  //off
+  if(ballast_adc >= -1.675 && ballast_adc < 0.976  && !in_fm_failsafe)    
+    {
+    uio48.port_write(BALLAST,0);
+    }
+  
+  //trim_forward  
+  if(ballast_adc >= -4.175 && ballast_adc < -1.675  && !in_fm_failsafe)   
+    {
+    uio48.port_write(BALLAST, pump + valve2 + valve5);
+    }
+    
+  //blow
+  if(ballast_adc < -4.175  && !in_fm_failsafe)                            
+    {
+    uio48.port_write(BALLAST, pump + valve1 + valve4 + valve5);
+    }
+
+    //uio48.port_write(BALLAST, 0x7f);  
+  
+  // mode is on fm ch 5, aim2 ch9, data[40]
+  float  mode_in = 0;    // used to filter fm mode commands
+  float  mode_out = 0;
+  static float  mode_out_old = 0;
+  static float  mode_in_old = 0;
+  float  mode_command = 0;
+
+  mode_adc = data[40] / full_scale_counts * input_range;
+  
+  mode_in = mode_adc;
+  mode_out = (time_step*(mode_in + mode_in_old) / (2*tau+time_step))  - mode_out_old *((time_step - 2*tau)/(2*tau + time_step));
+  mode_out_old = mode_out;
+  mode_in_old = mode_in;
+  
+  mode_command = mode_out;
+  
+/*  _settextposition(23,60);
+  cout<<dec<<mode_adc<<"      "<<flush;
+  _settextposition(24,60);
+  cout<<dec<<mode_out<<"     "<<flush;
+*/
+/*  
+  _settextposition(23,60);
+  cout<<dec<<data[64]<<"      "<<flush;
+  _settextposition(24,60);
+*/  
+  
+  cout<<dec<<data[64]<<"     "<<flush;    
+  
+  
+    // take data
+  if((mode_command >= 4.00) && zeros_complete
+                            && !data_complete  
+                          //  && actuator_index_done
+                            && !in_fm_failsafe)
+    // take run data                        
+    {
+    mode = 0;  // ln200 free inertia 
+    taking_zeros = 0;
+    taking_data = 1;
+    cage_complete = 0;
+    }
+                          
+    
+    // take zeros                          
+  if((mode_command >= -2.50) && mode_adc < 2.50 
+                             && !zeros_complete 
+                             && data_complete
+                             && cage_complete
+                            // && actuator_index_done
+                             && !in_fm_failsafe)
+    {
+    mode = 0;  // ln200 free inertia
+    taking_zeros = 1;
+    taking_data = 0;
+    cage_complete = 0;
+    }
+                          
+    
+    // cage gyro                      
+  //if((mode_command < -4.00) || !actuator_index_done && !in_fm_failsafe)
+  if((mode_command < -4.00) && !in_fm_failsafe)
+    {
+    mode = 1;  // ln200 fast leveling 
+    taking_zeros = 0;
+    taking_data = 0;
+    cage_complete = 1;
+    }
+    
+
+//   cout << "                                          Mode ADC  " << mode_adc << '\r' << flush;
+    
+  }  // end get_fm_commands
+  
+  
+  
+
+void perform_common_tasks(void)
+  {
+  int i = 0;
+  int j = 0;
+  int k = 0;
+
+  // transmit the pcm data on channelb
+  j = escc1.tx_port(channelb, pcm, 96);
+  
+  get_fm_commands();
+  
+  // build the ln200 command word and transmit
+  prep_ln200_command(HEADING_VALID);
+  j = escc1.tx_port(channela, tbuffer1, 14);
+
+  // send sync pulse to the DAQ system
+  // uio48.set_bit(SYNC);  // sync moved to cescc isr 11/24/99 jtm
+  // uio48.clr_bit(SYNC);
+      
+  // wait to receive ln200 response
+  long unsigned x;
+  x = 0;
+  while((j = escc1.rx_port(channela, rbuffer, 64)) != 33)
+    {
+    if(++x > 1000000000)  // time-out loop generates soft crash if no response
+      {             // from LN200
+      cout << "No response from LN200." << endl;
+      terminate_program();
+      }
+    }
+
+  k = j;  // k is the number of bytes received in the rbuffer
+
+  // convert k 8-bit bytes received from ln200 through escc into 16-bit data 
+  for(j = 0; j<(k-1)/2; j++)
+    {
+    data[j] = rbuffer[2*j+1];              // get high byte first
+    data[j] = (data[j]<<8) | (int(rbuffer[2*j])&0x00ff); // shift high byte up, insert low byte
+    }
+    
+    
+  // wait for the DMM32 to complete conversions
+  while(!dmm32.data_ready());
+  
+  // read 32 channels of DMM32 data
+  for(i=0; i<32; i++)
+    data[i+16] = dmm32.read_data();
+
+
+  
+  // pack the pcm data stream
+  prep_data();   // this data will be transmitted to console
+                 // at the beginning of the next data frame
+  
+  dmm32.trigger();
+  
+  }  // end of perform_common_tasks()
+  
+
+/*  moved to cessc isr for improved position accuracy
+  // report prop position relative to the encoder index pulse
+void get_prop_position(void)
+  {
+  //te5650SetAxis(BOARD2, AXIS2);
+  te5650SetAxis(BOARD1, AXIS2);
+
+  if(te5650IsCapture)   // if an index pulse occured since the last frame
+    {
+    te5650CapturePos(&axis6_index); // get the position of the index pulse
+    }
+    
+  te5650ActPos(&axis6_position);    // get the current encoder position
+//  data[64] = axis6_position - axis6_index;  // report the relative prop position 
+  //data[64] = axis6_position - axis6_index + 564;  // 4/27/00 bias model Z axis 
+  data[64] = axis6_position - axis6_index + 5620 + 254;  // 5/10/00 bias model Z axis
+  
+  
+  if(data[64] > 10159)     // 4/29/00 adust for overrange condition
+    {                      // caused by 4/27/00 bias
+    data[64] = data[64] - 10160;
+    }
+    
+  if(data[64] < 0)                  // convert any negative counts to positive
+    {
+    data[64] = data[64] + 10160;
+    }
+
+  }
+*/  
+  
+void init_tech80(void)
+  {
+    // initialize Tech80 software drivers
+  cout << "Tech80 Driver Version " << hex << te5650InitSw() << dec << endl;
+
+  // init tech80 5950b motion controller  
+  if(te5650InitServo(0x2300, TE5650TYPE_DAC16)!=0)  // 0x2300  // 5/7/01
+    {
+    cout << "Failed InitServo." << endl;
+    _fcloseall();
+    terminate_program();
+    }
+  else
+    {
+    cout << "InitServo Done." << endl;
+    }
+
+  // ************* Axis 6 prop position**************
+  if(te5650SetAxis(BOARD1, AXIS2)!=0)
+    {
+    cout << "Failed SetAxis 6." << endl;
+    terminate_program();
+    }
+  else
+    {
+    cout << "SetAxis 6 OK.   ";
+    }
+    
+  te5650Update();
+  
+  if(te5650SetSampleTime(SAMPLE_TIME)==0)
+    {
+    cout << "Axis6 sample time set to " << SAMPLE_TIME << endl;
+    }
+  else
+    {
+    cout<< "Axis6 sample time not set." << endl;
+    terminate_program();
+    }
+    
+
+  if(te5650FilterPID(KP, KI, KD, IL)!=0)
+    {
+    cout << "Failed FilterPID 6." << endl;
+    terminate_program();
+    }
+  else
+    {
+    cout << "FilterPID 6 OK.   ";
+    }
+    
+
+  if(te5650Update()!=0)
+    {
+    cout << "Axis 6 Update Failed." << endl;
+    terminate_program();
+    }
+  else
+    {
+    cout << "Axis 6 Update OK." << endl;
+    }
+   
+    // all encoder inputs must be inverted when using DRC M21AAS0BB23-2540 encoder
+  te5650PhasesPolarity(INVERT, INVERT, INVERT); 
+  
+    // 
+  te5650SetPosErr(MAX_ERROR, AUTOSTOP_OFF);
+  
+    // make the index pulse the active capture trigger, not the home switch
+  te5650CaptureIndex();
+  
+    // discard any previous capture event
+  te5650ResetCapture();
+  
+    // write the configuration to the 5950b motion controller
+  te5650Update();
+  
+  
+  
+    // ************* Axis 7 D/A output**************
+  if(te5650SetAxis(BOARD1, AXIS3)!=0)
+    {
+    cout << "Failed SetAxis 7." << endl;
+    terminate_program();
+    }
+  else
+    {
+    cout << "SetAxis 7 OK.   ";
+    }
+    
+  te5650Update();
+  
+  if(te5650SetSampleTime(SAMPLE_TIME)==0)
+    {
+    cout << "Axis7 sample time set to " << SAMPLE_TIME << endl;
+    }
+  else
+    {
+    cout<< "Axis7 sample time not set." << endl;
+    terminate_program();
+    }
+    
+
+  if(te5650FilterPID(KP, KI, KD, IL)!=0)
+    {
+    cout << "Failed FilterPID 7." << endl;
+    terminate_program();
+    }
+  else
+    {
+    cout << "FilterPID 7 OK.   ";
+    }
+    
+
+  if(te5650Update()!=0)
+    {
+    cout << "Axis 7 Update Failed." << endl;
+    terminate_program();
+    }
+  else
+    {
+    cout << "Axis 7 Update OK." << endl;
+    }
+   
+    // all encoder inputs must be inverted when using DRC M21AAS0BB23-2540 encoder
+  te5650PhasesPolarity(INVERT, INVERT, INVERT); 
+  
+    // 
+  te5650SetPosErr(MAX_ERROR, AUTOSTOP_OFF);
+  
+    // make the index pulse the active capture trigger, not the home switch
+  te5650CaptureIndex();
+  
+    // discard any previous capture event
+  te5650ResetCapture();
+  
+    // write the configuration to the 5950b motion controller
+  te5650Update();
+  
+  te5650MotorOff();
+  te5650Update();
+  
+  
+  
+    // ************* Axis 8 D/A output**************
+  if(te5650SetAxis(BOARD1, AXIS4)!=0)
+    {
+    cout << "Failed SetAxis 8." << endl;
+    terminate_program();
+    }
+  else
+    {
+    cout << "SetAxis 8 OK.   ";
+    }
+    
+  te5650Update();
+  
+  if(te5650SetSampleTime(SAMPLE_TIME)==0)
+    {
+    cout << "Axis8 sample time set to " << SAMPLE_TIME << endl;
+    }
+  else
+    {
+    cout<< "Axis8 sample time not set." << endl;
+    terminate_program();
+    }
+    
+
+  if(te5650FilterPID(KP, KI, KD, IL)!=0)
+    {
+    cout << "Failed FilterPID 8." << endl;
+    terminate_program();
+    }
+  else
+    {
+    cout << "FilterPID 8 OK.   ";
+    }
+    
+
+  if(te5650Update()!=0)
+    {
+    cout << "Axis 8 Update Failed." << endl;
+    terminate_program();
+    }
+  else
+    {
+    cout << "Axis 8 Update OK." << endl;
+    }
+   
+    // all encoder inputs must be inverted when using DRC M21AAS0BB23-2540 encoder
+  te5650PhasesPolarity(INVERT, INVERT, INVERT); 
+  
+    // 
+  te5650SetPosErr(MAX_ERROR, AUTOSTOP_OFF);
+  
+    // make the index pulse the active capture trigger, not the home switch
+  te5650CaptureIndex();
+  
+    // discard any previous capture event
+  te5650ResetCapture();
+  
+    // write the configuration to the 5950b motion controller
+  te5650Update();
+  
+
+  te5650MotorOff();
+  te5650Update();
+  
+  
+  
+
+  
+  } // end init_tech80()
+
+  
+
+
+void sync_pinger(void)
+  {
+    // toggle pinger sync line low, then high (negative logic)
+    // pinger sync signal is on LBC586 DIO bit 8 (port 0, bit 7)
+  uio48.clr_bit(PINGER);
+  uio48.set_bit(PINGER);
+  }
+                                  
+
+void run_pinger(void)
+  {
+    // set pinger sync line low (negative logic)
+    // pinger sync signal is on LBC586 DIO bit 8 (port 0, bit 7)    
+  uio48.clr_bit(PINGER);   //for scenix pinger
+  }
+  
+  
+void reset_pinger(void)
+  {
+    // reset pinger sync line high (negative logic)
+    // pinger sync signal is on LBC586 DIO bit 8 (port 0, bit 7)
+  uio48.set_bit(PINGER);  // for scenix pinger
+  }
+    

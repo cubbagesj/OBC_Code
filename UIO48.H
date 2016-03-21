@@ -39,44 +39,57 @@
 
 #define RISING 1
 #define FALLING 0
+#define IO_BASE 0x120
+#define IO_PORT_0 IO_BASE
+#define IO_PORT_1 (IO_BASE + 1)
+#define IO_PORT_2 (IO_BASE + 2)
+#define IO_PORT_3 (IO_BASE + 3)
+#define IO_PORT_4 (IO_BASE + 4)
+#define IO_PORT_5 (IO_BASE + 5)
+#define IO_PORT_6 (IO_BASE + 6)
+#define IO_PORT_7 (IO_BASE + 7)
+#define OUT_BIT 48
+#define IN_BIT 48
+#define HZ100 25
+#define TAKING_DATA 30
+#define CAGED 31
+#define DIO_15 29
 
-// uio48 dio port numbers
-#define FSLOW        0
-#define FSHIGH       3
-#define FSHIGH2      4
-
-// uio48 dio port bit numbers (to failsafe board)
-#define PONDMASK     1   // input
-#define FSCONDL      2   // input
-#define FSSIGNAL     3   // input
-#define DEPTH        4   // input
-#define DCPOWER      5   // input
-#define EBATT        6   // input
-#define PFSSWITCH2   7   // input
-#define PFSSWITCH1   8   // input
-#define PFSVENTBLOW  9   // output
-#define VALVE1      10   // output
-#define VALVE2      11   // output
-#define VALVE3      12   // output
-#define VALVE4      13   // output
-#define VALVE5      14   // output
-#define VALVE6      15   // output
-#define PUMP        16   // output
-//#define HEARTBEAT   17   // output
-#define HEARTBEAT   19   // output    bad dio bit 17.  DB  8/9/05
-#define ERS         18   // output
-#define VALVEOFF     1
-#define VALVEON      0
-#define PUMPOFF      1
-#define PUMPON       0
-#define BITOFF       1
-#define BITON        0
-#define ERSBLOW      0
-#define ERSNOBLOW    1
-#define PFSBLOW      0
-#define PFSVENT      1
+  // UIO48 defines for OBC DIO
+#define POR 1        // DIO bit 1 used for LN200 Power On Reset (port 0 bit 0)
+#define HEARTBEAT 2  // DIO bit 2 (port 0 bit 1)
+#define PINGER 8     // DIO bit 8 used for pinger sync (port 0 bit 7)
+#define BALLAST 1    // DIO port 1 used for ballast functions (outputs)
+#define IN_HW_FAILSAFE 17 // DIO bit 17 (port 2 bit 0)
+#define OUTPUTS 0    // DIO port 0 configured as outputs
 
 
+  // UIO48 #defines for OBC to DAQ DIO interface
+#define COMMAND0 30  // Bit 30 used for lsb of DAQ command word (port 3 bit 5 (0-7))
+#define COMMAND1 31  // Bit 31 used for msb of DAQ command word (port 3 bit 6 (0-7))
+#define SYNC 32      // Bit 32 used for DAQ frame sync (Port 3 bit 7 (0-7))
+#define FRAME_HIGH 5 // Port 5 used for high byte of DAQ frame counter
+#define FRAME_LOW  4 // Port 4 used for low byte of DAQ frame counter
+#define RUN_NUMBER 3 // Port 3 used for DAQ run number indicator (5 lsb only)
+
+#define outportb _outp
+#define inportb _inp
+
+#ifndef SET
+#define SET 0
+#endif
+
+#ifndef RESET
+#define RESET 1
+#endif
+
+class __far Uio48
+{
+
+public:
+
+Uio48();
+~Uio48();
 
 void init_io(unsigned io_address);
 int read_bit(int bit_number);
@@ -87,4 +100,8 @@ void enab_int(int bit_number, int polarity);
 void disab_int(int bit_number);
 void clr_int(int bit_number);
 int get_int(void);
-unsigned read_port(int port_number);
+unsigned port_read(unsigned offset);
+void port_write(unsigned offset, int value); 
+
+};
+

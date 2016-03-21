@@ -41,8 +41,7 @@
 #include <conio.h>
 #include "uio48.h"
 
-#define outportb _outp
-#define inportb  _inp
+
 
 /* This global holds the base address of the UIO chip */
 
@@ -69,8 +68,18 @@ unsigned port_images[6];
 *  sensing, and sets the image values.
 *
 *===========================================================================*/
+Uio48::Uio48()
+  {
+  init_io(0x120);  // initialize all DIO ports as inputs (default setting)
+  port_write(OUTPUTS, 0xff);  // configure OUTPUTS port as outputs (port 0) and pull all bits low
+  port_write(BALLAST, 0x00);  // configure BALLAST port as outputs (port 1) and pull all bits low
+  }
 
-void init_io(unsigned io_address)
+Uio48::~Uio48()
+  {
+  }
+
+void Uio48::init_io(unsigned io_address)
 {
 int x;
 
@@ -81,7 +90,7 @@ int x;
   /* Clear all of the I/O ports. This also makes them inputs */
 
   for(x=0; x < 7; x++)
-    outportb(base_port+x, 0);
+    _outp(base_port+x, 0);
 
   /* Clear our image values as well */
 
@@ -90,16 +99,16 @@ int x;
 
   /* Set page 2 access, for interrupt enables */
 
-  outportb(base_port+7,0x80);
+  _outp(base_port+7,0x80);
 
   /* Clear all interrupt enables */
   
-  outportb(base_port+8,0);
-  outportb(base_port+9,0);
-  outportb(base_port+0x0a,0);
+  _outp(base_port+8,0);
+  _outp(base_port+9,0);
+  _outp(base_port+0x0a,0);
 
   /* Restore normal page 0 register access */
-  outportb(base_port+7,0);
+  _outp(base_port+7,0);
 
 }
 
@@ -121,7 +130,7 @@ int x;
 *
 *===========================================================================*/
 
-int read_bit(int bit_number)
+int Uio48::read_bit(int bit_number)
 {
 unsigned port;
 int val;
@@ -136,7 +145,7 @@ int val;
 
   /* Get the current contents of the port */
 
-  val = inportb(port);
+  val = _inp(port);
 
   /* Get just the bit we specified */
 
@@ -166,11 +175,11 @@ int val;
 *
 *===========================================================================*/
  
-void write_bit(int bit_number, int val)
-{
-unsigned port;
-unsigned temp;
-unsigned mask;
+void Uio48::write_bit(int bit_number, int val)
+  {
+  unsigned port;
+  unsigned temp;
+  unsigned mask;
  
 
   /* Adjust bit_number for 0 based numbering */
@@ -202,8 +211,8 @@ unsigned mask;
 
   /* Now actually update the port. Only the specified bit is affected */
 
-  outportb(port,temp);
-}
+  _outp(port,temp);
+  }
 
 /*===========================================================================
 *                                  SET_BIT
@@ -217,7 +226,7 @@ unsigned mask;
 *
 *===========================================================================*/     
 
-void set_bit(int bit_number)
+void Uio48::set_bit(int bit_number)
 {
 
   write_bit(bit_number,1);
@@ -235,7 +244,7 @@ void set_bit(int bit_number)
 *
 *===========================================================================*/     
 
-void clr_bit(int bit_number)
+void Uio48::clr_bit(int bit_number)
 {
   write_bit(bit_number,0);
 }
@@ -258,7 +267,7 @@ void clr_bit(int bit_number)
 *
 *============================================================================*/
 
-void enab_int(int bit_number, int polarity)
+void Uio48::enab_int(int bit_number, int polarity)
 {
 unsigned port;
 unsigned temp;
@@ -278,11 +287,11 @@ unsigned mask;
 
   /* Turn on page 2 access */
 
-  outportb(base_port+7,0x80);
+  _outp(base_port+7,0x80);
 
   /* Get the current state of the interrupt enable register */
 
-  temp = inportb(port);
+  temp = _inp(port);
 
   /* Set the enable bit for our bit number */
 
@@ -290,15 +299,15 @@ unsigned mask;
 
   /* Now update the interrupt enable register */
 
-  outportb(port,temp);
+  _outp(port,temp);
 
   /* Turn on access to page 1 for polarity control */
 
-  outportb(base_port+7,0x40);
+  _outp(base_port+7,0x40);
 
   /* Get the current state of the polarity register */
 
-  temp = inportb(port);   /* Get current polarity settings */
+  temp = _inp(port);   /* Get current polarity settings */
 
   /* Set the polarity according to the argument in the image value */
 
@@ -309,11 +318,11 @@ unsigned mask;
   
   /* Write out the new polarity value */
 
-  outportb(port,temp);
+  _outp(port,temp);
 
   /* Set access back to Page 0 */
 
-  outportb(base_port+7,0x0);
+  _outp(base_port+7,0x0);
 
 }
 
@@ -329,7 +338,7 @@ unsigned mask;
 *
 *===========================================================================*/
       
-void disab_int(int bit_number)
+void Uio48::disab_int(int bit_number)
 {
 unsigned port;
 unsigned temp;
@@ -349,11 +358,11 @@ unsigned mask;
 
   /* Turn on access to page 2 registers */
 
-  outportb(base_port+7,0x80);
+  _outp(base_port+7,0x80);
 
   /* Get the current state of the enable register */
 
-  temp = inportb(port);
+  temp = _inp(port);
 
   /* Clear the enable bit int the image for our bit number */
 
@@ -361,11 +370,11 @@ unsigned mask;
   
   /* Update the enable register with the new information */
 
-  outportb(port,temp);
+  _outp(port,temp);
 
   /* Set access back to page 0 */
 
-  outportb(base_port+7,0x0);
+  _outp(base_port+7,0x0);
 
 }
 
@@ -384,7 +393,7 @@ unsigned mask;
 *
 *===========================================================================*/
 
-void clr_int(int bit_number)
+void Uio48::clr_int(int bit_number)
 {
 unsigned port;
 unsigned temp;
@@ -405,11 +414,11 @@ unsigned mask;
 
   /* Set access to page 2 for the enable register */
 
-  outportb(base_port+7,0x80);
+  _outp(base_port+7,0x80);
 
   /* Get current state of the enable register */
 
-  temp = inportb(port);
+  temp = _inp(port);
 
   /* Temporarily clear only OUR enable. This clears the interrupt */
 
@@ -417,7 +426,7 @@ unsigned mask;
   
   /* Write out the temporary value */ 
 
-  outportb(port,temp);
+  _outp(port,temp);
 
   /* Re-enable our interrupt bit */
 
@@ -425,11 +434,11 @@ unsigned mask;
 
   /* Write it out */
 
-  outportb(port,temp);
+  _outp(port,temp);
 
   /* Set access back to page 0 */
 
-  outportb(base_port+7,0x0);
+  _outp(base_port+7,0x0);
 
 }
 
@@ -448,14 +457,14 @@ unsigned mask;
 *
 *===========================================================================*/
  
-int get_int(void)
+int Uio48::get_int(void)
 {
 int temp;
 int x;
 
   /* read the master interrupt pending register, mask off undefined bits */
 
-  temp = inportb(base_port+6) & 0x07;
+  temp = _inp(base_port+6) & 0x07;
 
   /* If there are no interrupts pending, return a 0 */
 
@@ -467,11 +476,11 @@ int x;
   
   /* Set access to page 3 for interrupt id registers */
 
-  outportb(base_port+7,0xc0);
+  _outp(base_port+7,0xc0);
 
   /* Read interrupt ID register for port 0 */
 
-  temp = inportb(base_port+8);
+  temp = _inp(base_port+8);
 
 
   /* See if any bit set, if so return the bit number */
@@ -482,7 +491,7 @@ int x;
     {
       if(temp & (1 << x))
       {
-        outportb(base_port+7,0);  /* Turn off access */
+        _outp(base_port+7,0);  /* Turn off access */
         return(x+1);    /* Return bitnumber with active int */
       }
     }
@@ -490,7 +499,7 @@ int x;
 
   /* None in Port 0, read port 1 interrupt ID register */
 
-  temp = inportb(base_port+9);
+  temp = _inp(base_port+9);
 
   /* See if any bit set, if so return the bit number */
 
@@ -500,7 +509,7 @@ int x;
     {
       if(temp & (1 << x))
       {
-        outportb(base_port+7,0);  /* Turn off access */
+        _outp(base_port+7,0);  /* Turn off access */
         return(x+9);    /* Return bitnumber with active int */
       }
     }
@@ -508,7 +517,7 @@ int x;
 
   /* Lastly, read status of port 2 int id */
   
-  temp = inportb(base_port+0x0a);    /* Read port 2 status */
+  temp = _inp(base_port+0x0a);    /* Read port 2 status */
 
   /* If any pending, return the appropriate bit number */
 
@@ -518,7 +527,7 @@ int x;
     {
       if(temp & (1 << x))
       {
-        outportb(base_port+7,0);  /* Turn off access */
+        _outp(base_port+7,0);  /* Turn off access */
         return(x+17);   /* Return bitnumber with active int */
       }
     }
@@ -530,12 +539,19 @@ int x;
   */
 
 
-  outportb(base_port+7,0);
+  _outp(base_port+7,0);
   return 0;
 }
 
 
-unsigned read_port(int port_number)
-  {
-  return inportb(port_number + base_port) & 0x00ff;
+unsigned Uio48::port_read(unsigned offset)   // reads one byte from an I/O port
+  {                                // note bit-wise inversion
+  return unsigned (~_inp(base_port + offset));// uio48 uses negative logic
+  }
+  
+
+void Uio48::port_write(unsigned offset, int value)  // writes one byte to an I/O port
+  {                                            // and its respective mirror
+  port_images[offset] = value;
+  _outp(base_port + offset, value);
   }
